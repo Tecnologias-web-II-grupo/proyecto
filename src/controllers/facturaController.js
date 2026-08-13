@@ -1,0 +1,135 @@
+const pool = require('../db/database');
+const { encrypt, decrypt } = require('../middleware/crypto');
+const { randomUUID } = require('crypto');
+
+async function crearFactura(req, res) {
+  const body = req.body;
+  const id = body.id || `F-${randomUUID().slice(0, 8).toUpperCase()}`;
+  const conn = await pool.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    await conn.execute(
+      `INSERT INTO facturas (
+        id, fecha_emision, moneda, condicion_venta, medio_pago,
+        emisor_nombre, emisor_tipo_id, emisor_numero_id, emisor_correo,
+        receptor_nombre, receptor_tipo_id, receptor_numero_id, receptor_correo,
+        total_gravado, total_exento, total_descuentos, total_impuesto, total_comprobante
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        new Date(body.fecha),
+        body.moneda,
+        body.condicionVenta,
+        body.medioPago,
+        body.emisor.nombre,
+        body.emisor.identificacion.tipo,
+        encrypt(body.emisor.identificacion.numero),
+        body.emisor.correo,
+        body.receptor.nombre,
+        body.receptor.identificacion?.tipo || null,
+        body.receptor.identificacion?.numero ? encrypt(body.receptor.identificacion.numero) : null,
+        body.receptor.correo,
+        body.totales.totalGravado,
+        body.totales.totalExento,
+        body.totales.totalDescuentos || 0,
+        body.totales.totalImpuesto,
+        body.totales.totalComprobante,
+      ]
+    );
+
+    for (const item of body.items) {
+      await conn.execute(
+        `INSERT INTO factura_items (
+          factura_id, numero_linea, detalle, cantidad, precio_unitario,
+          descuento, impuesto_tarifa, subtotal, monto_total_linea
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          item.numeroLinea ?? null,
+          item.detalle,
+          item.cantidad,
+          item.precioUnitario,
+          item.descuento || 0,
+          item.impuesto.tarifa,
+          item.subtotal,
+          item.montoTotalLinea,
+        ]
+      );
+    }
+
+    await conn.commit();
+    const facturaCreada = await obtenerFacturaPorId(id);
+    return res.status(201).json(facturaCreada);
+  } catch (err) {
+    await conn.rollback();
+    console.error('[crearFactura] error:', err.message);
+    return res.status(500).json({ error: 'No se pudo crear la factura', detalle: err.message });
+  } finally {
+    conn.release();
+  }
+}
+
+async function consultarFactura(req, res) {
+  try {
+    const factura = await obtenerFacturaPorId(req.params.id);
+    if (!factura) {
+      return res.status(404).json({ error: 'Factura no encontrada' });
+    }
+    return res.json(factura);
+  } catch (err) {
+    console.error('[consultarFactura] error:', err.message);
+    return res.status(500).json({ error: 'Error al consultar la factura' });
+  }
+}
+
+async function obtenerFacturaPorId(id) {
+  const [facturaRows] = await pool.execute('SELECT * FROM facturas WHERE id = ?', [id]);
+  if (facturaRows.length === 0) return null;
+  const f = facturaRows[0];
+
+  const [itemRows] = await pool.execute(
+    'SELECT * FROM factura_items WHERE factura_id = ? ORDER BY numero_linea',
+    [id]
+  );
+
+  return {
+    id: f.id,
+    fecha: new Date(f.fecha_emision).toISOString(),
+    moneda: f.moneda,
+    condicionVenta: f.condicion_venta,
+    medioPago: f.medio_pago,
+    emisor: {
+      nombre: f.emisor_nombre,
+      identificacion: { tipo: f.emisor_tipo_id, numero: decrypt(f.emisor_numero_id) },
+      correo: f.emisor_correo,
+    },
+    receptor: {
+      nombre: f.receptor_nombre,
+      identificacion: f.receptor_numero_id
+        ? { tipo: f.receptor_tipo_id, numero: decrypt(f.receptor_numero_id) }
+        : null,
+      correo: f.receptor_correo,
+    },
+    items: itemRows.map((it) => ({
+      numeroLinea: it.numero_linea,
+      detalle: it.detalle,
+      cantidad: Number(it.cantidad),
+      precioUnitario: Number(it.precio_unitario),
+      descuento: Number(it.descuento),
+      impuesto: { tarifa: Number(it.impuesto_tarifa) },
+      subtotal: Number(it.subtotal),
+      montoTotalLinea: Number(it.monto_total_linea),
+    })),
+    totales: {
+      totalGravado: Number(f.total_gravado),
+      totalExento: Number(f.total_exento),
+      totalDescuentos: Number(f.total_descuentos),
+      totalImpuesto: Number(f.total_impuesto),
+      totalComprobante: Number(f.total_comprobante),
+    },
+  };
+}
+
+module.exports = { crearFactura, consultarFactura };

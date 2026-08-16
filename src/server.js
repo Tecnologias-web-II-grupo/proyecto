@@ -1,10 +1,19 @@
 const express = require('express');
+const path = require('path');
 require('dotenv').config();
 
 const facturaRoutes = require('./routes/facturaRoutes');
 
 const app = express();
 app.use(express.json());
+
+// Servir archivos estáticos de la plantilla de factura
+app.use(express.static(path.join(__dirname, 'factura-plantilla')));
+
+// Servir el JSON de factura de ejemplo
+app.get('/api/factura-ejemplo', (req, res) => {
+  res.sendFile(path.join(__dirname, '../factura-ejemplo.json'));
+});
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 app.use('/api/facturas', facturaRoutes);

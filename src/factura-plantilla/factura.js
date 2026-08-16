@@ -5,7 +5,7 @@ async function cargarFactura() {
     try {
 
         // Obtiene los datos del archivo JSON
-        const respuesta = await fetch("/api/factura-ejemplo");
+        const respuesta = await fetch("/factura-ejemplo.json");
 
         if (!respuesta.ok) {
             throw new Error("No se pudo cargar la factura");

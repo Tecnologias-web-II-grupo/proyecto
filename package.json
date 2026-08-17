@@ -4,7 +4,11 @@
   "description": "",
   "main": "src/server.js",
   "scripts": {
+<<<<<<< HEAD
+    "test": "echo \"Error: no test specified\" && exit 1",
+=======
     "test": "node --test --experimental-test-isolation=none",
+>>>>>>> a63d5311cdb9b8ed031d88aa04981bab26750616
     "start": "node src/server.js",
     "dev": "node --watch src/server.js"
   },
@@ -13,10 +17,16 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+<<<<<<< HEAD
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "mysql2": "^3.23.2"
+=======
     "cheerio": "^1.2.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "mysql2": "^3.23.2",
     "puppeteer": "^25.7.0"
+>>>>>>> a63d5311cdb9b8ed031d88aa04981bab26750616
   }
 }

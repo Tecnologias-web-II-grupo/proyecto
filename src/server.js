@@ -11,7 +11,7 @@ app.use(express.json());
 // Servir archivos estáticos de la plantilla de factura
 app.use(express.static(path.join(__dirname, 'factura-plantilla')));
 
-// Servir el JSON de factura de ejemplo
+// Servir el JSON de factura de ejemplo a través de la API
 app.get('/api/factura-ejemplo', (req, res) => {
   res.sendFile(path.join(__dirname, '../factura-ejemplo.json'));
 });

@@ -73,7 +73,8 @@ app.get('/', (req, res) => {
   res.json({
     servicio: 'API de Facturación al Cliente',
     estado: 'activo',
-    version: '1.0.0',
+    version: '1.1.0',
+    templateVersion: 'educontrol-color-v3',
     endpoints: {
       health: 'GET /health',
       crearFactura: 'POST /api/facturas',
@@ -84,7 +85,7 @@ app.get('/', (req, res) => {
   });
 });
 
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
+app.get('/health', (req, res) => res.json({ status: 'ok', version: '1.1.0', templateVersion: 'educontrol-color-v3' }));
 
 app.get('/health/documentos', async (req, res) => {
   try {

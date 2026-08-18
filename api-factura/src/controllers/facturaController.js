@@ -2,9 +2,54 @@ const pool = require('../db/database');
 const { encrypt, decrypt } = require('../middleware/crypto');
 const { randomUUID } = require('crypto');
 
+let logoSchemaPromise = null;
+
+async function asegurarColumnaLogo() {
+  if (logoSchemaPromise) return logoSchemaPromise;
+
+  logoSchemaPromise = (async () => {
+    const [[row]] = await pool.query(
+      `SELECT COUNT(*) AS existe
+       FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'facturas'
+         AND COLUMN_NAME = 'emisor_logo'`
+    );
+
+    if (!Number(row?.existe || 0)) {
+      await pool.query(
+        `ALTER TABLE facturas
+         ADD COLUMN emisor_logo LONGTEXT NULL AFTER emisor_correo`
+      );
+    }
+  })().catch((error) => {
+    logoSchemaPromise = null;
+    throw error;
+  });
+
+  return logoSchemaPromise;
+}
+
+function normalizarLogo(valor) {
+  if (valor === null || valor === undefined || valor === '') return null;
+  const logo = String(valor).trim();
+
+  if (logo.length > 800000) {
+    throw new Error('El logo excede el tamaño máximo permitido.');
+  }
+
+  if (!/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=\s]+$/i.test(logo)) {
+    throw new Error('El logo debe ser PNG o JPG en formato data URL.');
+  }
+
+  return logo;
+}
+
 async function crearFactura(req, res) {
   const body = req.body;
   const id = body.id || `F-${randomUUID().slice(0, 8).toUpperCase()}`;
+  await asegurarColumnaLogo();
+  const logoEmisor = normalizarLogo(body.emisor?.logoUrl || body.emisor?.logo_data || null);
   const conn = await pool.getConnection();
 
   try {
@@ -13,10 +58,10 @@ async function crearFactura(req, res) {
     await conn.execute(
       `INSERT INTO facturas (
         id, fecha_emision, moneda, condicion_venta, medio_pago,
-        emisor_nombre, emisor_tipo_id, emisor_numero_id, emisor_correo,
+        emisor_nombre, emisor_tipo_id, emisor_numero_id, emisor_correo, emisor_logo,
         receptor_nombre, receptor_tipo_id, receptor_numero_id, receptor_correo,
         total_gravado, total_exento, total_descuentos, total_impuesto, total_comprobante
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         new Date(body.fecha),
@@ -27,6 +72,7 @@ async function crearFactura(req, res) {
         body.emisor.identificacion.tipo,
         encrypt(body.emisor.identificacion.numero),
         body.emisor.correo,
+        logoEmisor,
         body.receptor.nombre,
         body.receptor.identificacion?.tipo || null,
         body.receptor.identificacion?.numero ? encrypt(body.receptor.identificacion.numero) : null,
@@ -85,6 +131,7 @@ async function consultarFactura(req, res) {
 }
 
 async function obtenerFacturaPorId(id) {
+  await asegurarColumnaLogo();
   const [facturaRows] = await pool.execute('SELECT * FROM facturas WHERE id = ?', [id]);
   if (facturaRows.length === 0) return null;
   const f = facturaRows[0];
@@ -104,6 +151,7 @@ async function obtenerFacturaPorId(id) {
       nombre: f.emisor_nombre,
       identificacion: { tipo: f.emisor_tipo_id, numero: decrypt(f.emisor_numero_id) },
       correo: f.emisor_correo,
+      logoUrl: f.emisor_logo || null,
     },
     receptor: {
       nombre: f.receptor_nombre,

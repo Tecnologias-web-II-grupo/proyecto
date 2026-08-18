@@ -22,6 +22,15 @@ function validateFactura(body) {
   required('emisor.identificacion.numero', emisor.identificacion?.numero);
   required('emisor.correo', emisor.correo);
 
+  if (emisor.logoUrl) {
+    const logo = String(emisor.logoUrl).trim();
+    if (logo.length > 800000) {
+      errors.push('emisor.logoUrl excede el tamaño máximo permitido');
+    } else if (!/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=\s]+$/i.test(logo)) {
+      errors.push('emisor.logoUrl debe ser una imagen PNG o JPG válida');
+    }
+  }
+
   const receptor = body.receptor || {};
   required('receptor.nombre', receptor.nombre);
   required('receptor.correo', receptor.correo);

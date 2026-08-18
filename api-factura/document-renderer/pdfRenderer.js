@@ -1,3 +1,12 @@
+const path = require('path');
+
+// Esta variable debe existir antes de cargar Puppeteer. En Render, si Puppeteer
+// se carga primero puede memorizar ~/.cache/puppeteer y luego no encontrar el
+// Chrome instalado durante el build.
+if (!process.env.PUPPETEER_CACHE_DIR) {
+  process.env.PUPPETEER_CACHE_DIR = path.join(__dirname, '..', 'node_modules', '.puppeteer_cache');
+}
+
 const puppeteer = require('puppeteer');
 const { asegurarChrome } = require('./browserManager');
 
@@ -14,6 +23,7 @@ async function generarPdf(html) {
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
+        '--font-render-hinting=none',
       ],
     });
 
@@ -25,6 +35,18 @@ async function generarPdf(html) {
         timeout: Number(process.env.DOCUMENT_RENDERER_TIMEOUT_MS || 90000),
       });
 
+      // Espera imágenes incrustadas (incluido el logo) antes de imprimir.
+      await page.evaluate(async () => {
+        const images = Array.from(document.images || []);
+        await Promise.all(images.map((img) => {
+          if (img.complete) return Promise.resolve();
+          return new Promise((resolve) => {
+            img.addEventListener('load', resolve, { once: true });
+            img.addEventListener('error', resolve, { once: true });
+          });
+        }));
+      });
+
       await page.emulateMediaType('print');
 
       return await page.pdf({
@@ -32,6 +54,7 @@ async function generarPdf(html) {
         printBackground: true,
         preferCSSPageSize: true,
         displayHeaderFooter: false,
+        tagged: true,
       });
     } finally {
       await page.close().catch(() => {});

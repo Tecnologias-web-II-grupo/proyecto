@@ -1,7 +1,7 @@
 {
   "name": "api-factura",
-  "version": "1.1.0",
-  "description": "API REST de comprobantes EduControl con plantilla React y generación PDF de solo lectura",
+  "version": "1.2.0",
+  "description": "API REST compartida para registrar, consultar y generar facturas visuales en PDF de solo lectura",
   "main": "src/server.js",
   "scripts": {
     "test": "node --test --experimental-test-isolation=none",

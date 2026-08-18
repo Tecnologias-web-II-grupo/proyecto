@@ -41,7 +41,7 @@ app.use((req, res, next) => {
   if (origin && isAllowedOrigin(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept');
     res.setHeader('Access-Control-Max-Age', '86400');
   }
@@ -78,6 +78,7 @@ app.get('/', (req, res) => {
       health: 'GET /health',
       crearFactura: 'POST /api/facturas',
       consultarFactura: 'GET /api/facturas/:id',
+      actualizarLogo: 'PATCH /api/facturas/:id/logo',
       documento: 'GET /api/documentos/facturas/:id (PDF de solo lectura)',
     },
   });

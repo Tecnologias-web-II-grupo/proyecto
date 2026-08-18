@@ -38,8 +38,8 @@ function normalizarLogo(valor) {
     throw new Error('El logo excede el tamaño máximo permitido.');
   }
 
-  if (!/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=\s]+$/i.test(logo)) {
-    throw new Error('El logo debe ser PNG o JPG en formato data URL.');
+  if (!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=\s]+$/i.test(logo)) {
+    throw new Error('El logo debe ser PNG, JPG o WEBP en formato data URL.');
   }
 
   return logo;
@@ -117,6 +117,26 @@ async function crearFactura(req, res) {
   }
 }
 
+
+async function actualizarLogoFactura(req, res) {
+  const id = String(req.params.id || '').trim();
+  if (!id) return res.status(400).json({ error: 'Factura inválida' });
+  try {
+    await asegurarColumnaLogo();
+    const logoEmisor = normalizarLogo(req.body?.logoUrl ?? req.body?.logo_data ?? null);
+    const soloSiVacio = req.body?.soloSiVacio !== false;
+    const [result] = soloSiVacio
+      ? await pool.execute('UPDATE facturas SET emisor_logo = COALESCE(emisor_logo, ?) WHERE id = ?', [logoEmisor, id])
+      : await pool.execute('UPDATE facturas SET emisor_logo = ? WHERE id = ?', [logoEmisor, id]);
+    if (!result.affectedRows) return res.status(404).json({ error: 'Factura no encontrada' });
+    const factura = await obtenerFacturaPorId(id);
+    return res.json({ id, logoActualizado: Boolean(factura?.emisor?.logoUrl) });
+  } catch (err) {
+    console.error('[actualizarLogoFactura] error:', err.message);
+    return res.status(400).json({ error: 'No se pudo actualizar el logo', detalle: err.message });
+  }
+}
+
 async function consultarFactura(req, res) {
   try {
     const factura = await obtenerFacturaPorId(req.params.id);
@@ -180,4 +200,4 @@ async function obtenerFacturaPorId(id) {
   };
 }
 
-module.exports = { crearFactura, consultarFactura, obtenerFacturaPorId };
+module.exports = { crearFactura, consultarFactura, actualizarLogoFactura, obtenerFacturaPorId };

@@ -26,8 +26,8 @@ function validateFactura(body) {
     const logo = String(emisor.logoUrl).trim();
     if (logo.length > 800000) {
       errors.push('emisor.logoUrl excede el tamaño máximo permitido');
-    } else if (!/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=\s]+$/i.test(logo)) {
-      errors.push('emisor.logoUrl debe ser una imagen PNG o JPG válida');
+    } else if (!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=\s]+$/i.test(logo)) {
+      errors.push('emisor.logoUrl debe ser una imagen PNG, JPG o WEBP válida');
     }
   }
 

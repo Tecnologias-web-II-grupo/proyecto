@@ -4,7 +4,7 @@ async function cargarFactura() {
 
     try {
 
-        // Obtiene los datos del archivo JSON
+        // Obtiene los datos del archivo JSON y 
         const respuesta = await fetch("/factura-ejemplo.json");
 
         if (!respuesta.ok) {

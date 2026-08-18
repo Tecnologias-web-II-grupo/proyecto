@@ -1,7 +1,7 @@
 {
-  "name": "api-core",
+  "name": "api-factura",
   "version": "1.0.0",
-  "description": "",
+  "description": "API REST de Factura Bonita con plantilla React y generación PDF de solo lectura",
   "main": "src/server.js",
   "scripts": {
     "test": "node --test --experimental-test-isolation=none",

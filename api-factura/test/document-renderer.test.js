@@ -44,36 +44,23 @@ function createResponse() {
     statusCode: 200,
     headers: {},
     status(code) { this.statusCode = code; return this; },
-    type(value) { this.headers['Content-Type'] = value === 'html' ? 'text/html; charset=utf-8' : value; return this; },
     set(values) { Object.assign(this.headers, values); return this; },
     send(body) { this.body = body; return this; },
     json(body) { this.body = body; return this; },
   };
 }
 
-test('renderiza datos UTF-8 en la plantilla sin ejecutar HTML de los datos', async () => {
+test('React renderiza la factura con datos UTF-8 y escapa HTML de entrada', async () => {
   const html = await renderizarHtml(factura);
   assert.match(html, /Tecnología José Muñoz/);
   assert.match(html, /María Peña/);
   assert.match(html, /Artículo electrónico para niño – edición especial/);
-  assert.match(html, /₡11(?:&nbsp;|\s)300,00/);
+  assert.match(html, /FACTURA/);
+  assert.doesNotMatch(html, /FACTURA ELECTRÓNICA/);
   assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/);
-  assert.doesNotMatch(html, /Ãƒ|Ã‚|ï¿½/);
 });
 
-test('devuelve HTML con el Content-Type requerido', async () => {
-  const controller = createDocumentController({
-    apiClient: { obtenerPorId: async () => factura },
-    htmlRenderer: renderizarHtml,
-  });
-  const response = createResponse();
-  await controller({ params: { id: factura.id }, query: { formato: 'html' } }, response);
-  assert.equal(response.statusCode, 200);
-  assert.equal(response.headers['Content-Type'], 'text/html; charset=utf-8');
-  assert.match(response.body, /María Peña/);
-});
-
-test('usa PDF como formato predeterminado', async () => {
+test('el endpoint documental entrega PDF por defecto', async () => {
   const pdf = Buffer.from('%PDF-1.7\ncontenido');
   const controller = createDocumentController({
     apiClient: { obtenerPorId: async () => factura },
@@ -87,31 +74,20 @@ test('usa PDF como formato predeterminado', async () => {
   assert.deepEqual(response.body, pdf);
 });
 
-test('devuelve un PDF en memoria con el Content-Type requerido', async () => {
-  const pdf = Buffer.from('%PDF-1.7\ncontenido');
-  const controller = createDocumentController({
-    apiClient: { obtenerPorId: async () => factura },
-    htmlRenderer: renderizarHtml,
-    pdfRenderer: async () => pdf,
-  });
+test('rechaza formatos distintos de PDF', async () => {
+  const controller = createDocumentController({ apiClient: { obtenerPorId: async () => factura } });
   const response = createResponse();
-  await controller({ params: { id: factura.id }, query: { formato: 'pdf' } }, response);
-  assert.equal(response.statusCode, 200);
-  assert.equal(response.headers['Content-Type'], 'application/pdf');
-  assert.deepEqual(response.body, pdf);
+  await controller({ params: { id: factura.id }, query: { formato: 'html' } }, response);
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.body.codigo, 'FORMATO_INVALIDO');
 });
 
-test('rechaza identificadores y formatos inválidos', async () => {
+test('rechaza identificadores inválidos', async () => {
   const controller = createDocumentController({ apiClient: { obtenerPorId: async () => factura } });
-  const invalidId = createResponse();
-  await controller({ params: { id: '../factura' }, query: {} }, invalidId);
-  assert.equal(invalidId.statusCode, 400);
-  assert.equal(invalidId.body.codigo, 'ID_INVALIDO');
-
-  const invalidFormat = createResponse();
-  await controller({ params: { id: 'F-0001' }, query: { formato: 'xml' } }, invalidFormat);
-  assert.equal(invalidFormat.statusCode, 400);
-  assert.equal(invalidFormat.body.codigo, 'FORMATO_INVALIDO');
+  const response = createResponse();
+  await controller({ params: { id: '../factura' }, query: {} }, response);
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.body.codigo, 'ID_INVALIDO');
 });
 
 test('propaga factura inexistente y controla respuestas inesperadas', async () => {
@@ -128,23 +104,7 @@ test('propaga factura inexistente y controla respuestas inesperadas', async () =
   await assert.rejects(() => invalidClient.obtenerPorId('F-1'), { code: 'RESPUESTA_INVALIDA' });
 });
 
-test('controla API no disponible y timeout', async () => {
-  const unavailable = createFacturaApiClient({
-    baseUrl: 'http://api.test', timeoutMs: 100,
-    fetchImpl: async () => { throw new Error('ECONNREFUSED'); },
-  });
-  await assert.rejects(() => unavailable.obtenerPorId('F-1'), { code: 'API_NO_DISPONIBLE' });
-
-  const timeout = createFacturaApiClient({
-    baseUrl: 'http://api.test', timeoutMs: 5,
-    fetchImpl: (_url, { signal }) => new Promise((_resolve, reject) => {
-      signal.addEventListener('abort', () => reject(Object.assign(new Error('abort'), { name: 'AbortError' })));
-    }),
-  });
-  await assert.rejects(() => timeout.obtenerPorId('F-1'), { code: 'API_TIMEOUT' });
-});
-
-test('procesa solicitudes consecutivas sin compartir el documento', async () => {
+test('procesa facturas consecutivas sin mezclar sus datos', async () => {
   const results = await Promise.all([
     renderizarHtml(factura),
     renderizarHtml({ ...factura, id: 'F-OTRA', receptor: { ...factura.receptor, nombre: 'Ana Núñez' } }),

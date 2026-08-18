@@ -27,9 +27,9 @@ function createDocumentController(dependencies = {}) {
         );
       }
 
-      if (!['html', 'pdf'].includes(formato)) {
+      if (formato !== 'pdf') {
         throw new RendererError(
-          'Formato inválido; utilice html o pdf',
+          'Por el momento este servicio entrega únicamente facturas en PDF',
           400,
           'FORMATO_INVALIDO'
         );
@@ -54,11 +54,6 @@ function createDocumentController(dependencies = {}) {
       }
 
       const html = await htmlRenderer(factura);
-
-      if (formato === 'html') {
-        return res.status(200).type('html').send(html);
-      }
-
       const pdf = await pdfRenderer(html);
 
       res.set({
@@ -66,6 +61,7 @@ function createDocumentController(dependencies = {}) {
         'Content-Disposition': `inline; filename="factura-${id}.pdf"`,
         'Content-Length': pdf.length,
         'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
       });
 
       return res.status(200).send(pdf);
@@ -77,7 +73,7 @@ function createDocumentController(dependencies = {}) {
       }
 
       return res.status(controlled ? error.status : 500).json({
-        error: controlled ? error.message : 'No se pudo generar el documento',
+        error: controlled ? error.message : 'No se pudo generar el PDF',
         codigo: controlled ? error.code : 'RENDERER_ERROR',
       });
     }

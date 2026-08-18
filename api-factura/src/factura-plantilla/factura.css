@@ -460,3 +460,26 @@ tbody tr:nth-child(even) {
     }
 
 }
+.logo-emisor {
+    display: block;
+    max-width: 150px;
+    max-height: 70px;
+    object-fit: contain;
+    margin-bottom: 14px;
+}
+
+@media print {
+    html,
+    body {
+        width: 210mm;
+        min-height: 297mm;
+    }
+
+    tr,
+    .encabezado,
+    .condiciones,
+    .seccion-totales {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+}

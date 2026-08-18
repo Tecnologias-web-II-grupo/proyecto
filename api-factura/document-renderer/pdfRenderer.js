@@ -1,53 +1,66 @@
+const fs = require('fs');
 const puppeteer = require('puppeteer');
 
-function launchOptions() {
-  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
-
-  return {
-    headless: true,
-    ...(executablePath ? { executablePath } : {}),
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-    ],
-  };
-}
-
-async function generarPdf(html, launch = puppeteer.launch) {
-  let browser;
-  let page;
+function resolverEjecutable() {
+  const configurado = String(process.env.PUPPETEER_EXECUTABLE_PATH || '').trim();
+  if (configurado && fs.existsSync(configurado)) return configurado;
 
   try {
-    browser = await launch(launchOptions());
-    page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'networkidle0', timeout: 60000 });
+    const detected = puppeteer.executablePath();
+    if (detected && fs.existsSync(detected)) return detected;
+  } catch (_) {
+    // Se intenta luego con rutas comunes del sistema.
+  }
+
+  const rutasComunes = [
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+  ];
+
+  return rutasComunes.find((ruta) => fs.existsSync(ruta)) || null;
+}
+
+async function generarPdf(html) {
+  const executablePath = resolverEjecutable();
+
+  if (!executablePath) {
+    throw new Error(
+      'Chrome no está instalado para Puppeteer. Ejecute "npx puppeteer browsers install chrome" durante el build.'
+    );
+  }
+
+  let browser;
+
+  try {
+    browser = await puppeteer.launch({
+      headless: true,
+      executablePath,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+      ],
+    });
+
+    const page = await browser.newPage();
+    await page.setContent(html, {
+      waitUntil: ['domcontentloaded', 'networkidle0'],
+      timeout: Number(process.env.DOCUMENT_RENDERER_TIMEOUT_MS || 90000),
+    });
+
     await page.emulateMediaType('print');
 
-    return Buffer.from(await page.pdf({
+    return await page.pdf({
       format: 'A4',
       printBackground: true,
       preferCSSPageSize: true,
-      margin: {
-        top: '10mm',
-        right: '10mm',
-        bottom: '10mm',
-        left: '10mm',
-      },
-    }));
-  } catch (error) {
-    if (/Could not find Chrome|Browser was not found|executable/i.test(String(error?.message || ''))) {
-      const wrapped = new Error(
-        'Chrome no está instalado para Puppeteer. En Render ejecuta npm install con el postinstall del proyecto o usa el Build Command: npm install && npx puppeteer browsers install chrome.'
-      );
-      wrapped.cause = error;
-      throw wrapped;
-    }
-    throw error;
+      displayHeaderFooter: false,
+    });
   } finally {
-    if (page) await page.close().catch(() => {});
-    if (browser) await browser.close().catch(() => {});
+    if (browser) await browser.close();
   }
 }
 

@@ -4,7 +4,7 @@ const path = require('path');
 // se carga primero puede memorizar ~/.cache/puppeteer y luego no encontrar el
 // Chrome instalado durante el build.
 if (!process.env.PUPPETEER_CACHE_DIR) {
-  process.env.PUPPETEER_CACHE_DIR = path.join(__dirname, '..', 'node_modules', '.puppeteer_cache');
+  process.env.PUPPETEER_CACHE_DIR = path.join(__dirname, '..', '.cache', 'puppeteer');
 }
 
 const puppeteer = require('puppeteer');

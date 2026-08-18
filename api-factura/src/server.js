@@ -84,6 +84,19 @@ app.get('/', (req, res) => {
 });
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
+
+app.get('/health/documentos', async (req, res) => {
+  try {
+    const { resolverEjecutable } = require('../document-renderer/browserManager');
+    const executablePath = resolverEjecutable();
+    res.status(executablePath ? 200 : 503).json({
+      status: executablePath ? 'ok' : 'chrome_no_disponible',
+      chrome: Boolean(executablePath)
+    });
+  } catch (error) {
+    res.status(503).json({ status: 'error', chrome: false });
+  }
+});
 app.use('/api/facturas', facturaRoutes);
 app.use('/api/documentos', createDocumentRoutes());
 

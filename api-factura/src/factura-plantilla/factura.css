@@ -471,8 +471,8 @@ tbody tr:nth-child(even) {
 @media print {
     html,
     body {
-        width: 210mm;
-        min-height: 297mm;
+        width: auto;
+        min-height: auto;
     }
 
     tr,

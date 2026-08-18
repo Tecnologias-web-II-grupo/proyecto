@@ -4,7 +4,7 @@ const path = require('path');
 // se carga primero puede memorizar ~/.cache/puppeteer y luego no encontrar el
 // Chrome instalado durante el build.
 if (!process.env.PUPPETEER_CACHE_DIR) {
-  process.env.PUPPETEER_CACHE_DIR = path.join(__dirname, '..', 'node_modules', '.puppeteer_cache');
+  process.env.PUPPETEER_CACHE_DIR = path.join(__dirname, '..', '.cache', 'puppeteer');
 }
 
 const puppeteer = require('puppeteer');
@@ -31,8 +31,8 @@ async function generarPdf(html) {
 
     try {
       await page.setContent(html, {
-        waitUntil: ['domcontentloaded', 'networkidle0'],
-        timeout: Number(process.env.DOCUMENT_RENDERER_TIMEOUT_MS || 90000),
+        waitUntil: 'domcontentloaded',
+        timeout: Number(process.env.DOCUMENT_RENDERER_TIMEOUT_MS || 30000),
       });
 
       // Espera imágenes incrustadas (incluido el logo) antes de imprimir.
@@ -40,9 +40,17 @@ async function generarPdf(html) {
         const images = Array.from(document.images || []);
         await Promise.all(images.map((img) => {
           if (img.complete) return Promise.resolve();
+
           return new Promise((resolve) => {
-            img.addEventListener('load', resolve, { once: true });
-            img.addEventListener('error', resolve, { once: true });
+            const timeout = setTimeout(resolve, 5000);
+
+            const terminar = () => {
+              clearTimeout(timeout);
+              resolve();
+            };
+
+            img.addEventListener('load', terminar, { once: true });
+            img.addEventListener('error', terminar, { once: true });
           });
         }));
       });

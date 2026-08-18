@@ -132,4 +132,4 @@ async function obtenerFacturaPorId(id) {
   };
 }
 
-module.exports = { crearFactura, consultarFactura };
+module.exports = { crearFactura, consultarFactura, obtenerFacturaPorId };

@@ -7,7 +7,8 @@
     "test": "node --test --experimental-test-isolation=none",
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "postinstall": "npx puppeteer browsers install chrome"
+    "postinstall": "node scripts/installChrome.js",
+    "install:chrome": "node scripts/installChrome.js"
   },
   "keywords": [],
   "author": "",
@@ -18,7 +19,10 @@
     "express": "^5.2.1",
     "mysql2": "^3.23.2",
     "puppeteer": "^25.7.0",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

@@ -6,17 +6,19 @@
   "scripts": {
     "test": "node --test --experimental-test-isolation=none",
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "dev": "node --watch src/server.js",
+    "postinstall": "npx puppeteer browsers install chrome"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "cheerio": "^1.2.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "mysql2": "^3.23.2",
-    "puppeteer": "^25.7.0"
+    "puppeteer": "^25.7.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
   }
 }

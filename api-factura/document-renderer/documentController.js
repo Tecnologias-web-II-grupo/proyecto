@@ -60,21 +60,24 @@ function createDocumentController(dependencies = {}) {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `inline; filename="factura-${id}.pdf"`,
         'Content-Length': pdf.length,
-        'Cache-Control': 'no-store',
+        'Cache-Control': 'private, max-age=300',
         'X-Content-Type-Options': 'nosniff',
       });
 
       return res.status(200).send(pdf);
     } catch (error) {
       const controlled = error instanceof RendererError;
+      const status = controlled ? error.status : (Number(error?.status) || 500);
+      const codigo = controlled ? error.code : (error?.code || 'RENDERER_ERROR');
 
       if (!controlled) {
         console.error('[document-renderer]', error);
       }
 
-      return res.status(controlled ? error.status : 500).json({
-        error: controlled ? error.message : 'No se pudo generar el PDF',
-        codigo: controlled ? error.code : 'RENDERER_ERROR',
+      if (status === 503) res.set('Retry-After', '2');
+      return res.status(status).json({
+        error: controlled ? error.message : (status === 503 ? error.message : 'No se pudo generar el PDF'),
+        codigo,
       });
     }
   };

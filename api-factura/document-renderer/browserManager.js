@@ -8,6 +8,8 @@ process.env.PUPPETEER_CACHE_DIR = CACHE_DIR;
 
 const puppeteer = require('puppeteer');
 let installPromise = null;
+let browserPromise = null;
+let browserInstance = null;
 
 function existeEjecutable(ruta) {
   try {
@@ -21,7 +23,6 @@ function existeEjecutable(ruta) {
 
 function buscarChromeEnCache() {
   if (!fs.existsSync(CACHE_DIR)) return null;
-
   const nombres = new Set(['chrome', 'google-chrome', 'chromium', 'chrome-headless-shell', 'headless_shell']);
   const pendientes = [CACHE_DIR];
   let visitados = 0;
@@ -30,22 +31,15 @@ function buscarChromeEnCache() {
     const dir = pendientes.shift();
     visitados += 1;
     let entradas;
-    try {
-      entradas = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      continue;
-    }
+    try { entradas = fs.readdirSync(dir, { withFileTypes: true }); }
+    catch { continue; }
 
     for (const entrada of entradas) {
       const ruta = path.join(dir, entrada.name);
-      if (entrada.isDirectory()) {
-        pendientes.push(ruta);
-      } else if (nombres.has(entrada.name.toLowerCase()) && existeEjecutable(ruta)) {
-        return ruta;
-      }
+      if (entrada.isDirectory()) pendientes.push(ruta);
+      else if (nombres.has(entrada.name.toLowerCase()) && existeEjecutable(ruta)) return ruta;
     }
   }
-
   return null;
 }
 
@@ -56,19 +50,17 @@ function resolverEjecutable() {
   try {
     const esperado = puppeteer.executablePath();
     if (existeEjecutable(esperado)) return esperado;
-  } catch (_) {}
+  } catch {}
 
   const cacheado = buscarChromeEnCache();
   if (cacheado) return cacheado;
 
-  const comunes = [
+  return [
     '/usr/bin/google-chrome-stable',
     '/usr/bin/google-chrome',
     '/usr/bin/chromium',
     '/usr/bin/chromium-browser',
-  ];
-
-  return comunes.find(existeEjecutable) || null;
+  ].find(existeEjecutable) || null;
 }
 
 function instalarNavegadores() {
@@ -76,7 +68,7 @@ function instalarNavegadores() {
 
   return new Promise((resolve, reject) => {
     const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-    const child = spawn(npx, ['puppeteer', 'browsers', 'install'], {
+    const child = spawn(npx, ['puppeteer', 'browsers', 'install', 'chrome'], {
       cwd: ROOT_DIR,
       env: { ...process.env, PUPPETEER_CACHE_DIR: CACHE_DIR },
       stdio: 'inherit',
@@ -87,47 +79,103 @@ function instalarNavegadores() {
       reject(new Error('La instalación del navegador excedió el tiempo permitido.'));
     }, 240000);
 
-    child.once('error', (error) => {
-      clearTimeout(timeout);
-      reject(error);
-    });
-
+    child.once('error', (error) => { clearTimeout(timeout); reject(error); });
     child.once('exit', (code) => {
       clearTimeout(timeout);
       if (code === 0) resolve();
-      else reject(new Error(`No se pudo instalar el navegador para Puppeteer (código ${code}).`));
+      else reject(new Error(`No se pudo instalar Chrome para Puppeteer (código ${code}).`));
     });
   });
 }
 
 async function asegurarChrome() {
   let executablePath = resolverEjecutable();
-  if (executablePath) {
-    console.log(`[document-renderer] Chrome: ${executablePath}`);
-    return executablePath;
-  }
-
-  console.warn(`[document-renderer] No se encontró Chrome en ${CACHE_DIR}. Se intentará instalar.`);
+  if (executablePath) return executablePath;
 
   if (!installPromise) {
-    installPromise = instalarNavegadores().finally(() => {
-      installPromise = null;
-    });
+    installPromise = instalarNavegadores().finally(() => { installPromise = null; });
   }
-
   await installPromise;
+
   executablePath = resolverEjecutable();
-
-  if (!executablePath) {
-    let contenido = 'no disponible';
-    try {
-      contenido = fs.existsSync(CACHE_DIR) ? fs.readdirSync(CACHE_DIR).join(', ') : 'la carpeta no existe';
-    } catch (_) {}
-    throw new Error(`Chrome no quedó disponible para Puppeteer. Caché: ${CACHE_DIR}. Contenido: ${contenido}`);
-  }
-
-  console.log(`[document-renderer] Chrome instalado: ${executablePath}`);
+  if (!executablePath) throw new Error(`Chrome no quedó disponible para Puppeteer. Caché: ${CACHE_DIR}`);
   return executablePath;
 }
 
-module.exports = { CACHE_DIR, asegurarChrome, resolverEjecutable };
+async function obtenerBrowser() {
+  if (browserInstance?.connected) return browserInstance;
+  if (browserPromise) return browserPromise;
+
+  browserPromise = (async () => {
+    const executablePath = await asegurarChrome();
+    const browser = await puppeteer.launch({
+      headless: true,
+      executablePath,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--no-zygote',
+        '--disable-background-networking',
+        '--disable-default-apps',
+        '--disable-extensions',
+        '--disable-sync',
+        '--metrics-recording-only',
+        '--mute-audio',
+        '--font-render-hinting=none',
+      ],
+    });
+
+    browserInstance = browser;
+    browser.once('disconnected', () => {
+      browserInstance = null;
+      browserPromise = null;
+    });
+    console.log(`[document-renderer] Chrome reutilizable iniciado: ${executablePath}`);
+    return browser;
+  })().finally(() => {
+    browserPromise = null;
+  });
+
+  return browserPromise;
+}
+
+async function calentarNavegador() {
+  try {
+    const browser = await obtenerBrowser();
+    const page = await browser.newPage();
+    await page.setContent('<!doctype html><html><body></body></html>', { waitUntil: 'domcontentloaded', timeout: 5000 });
+    await page.close();
+    console.log('[document-renderer] Navegador precalentado.');
+    return true;
+  } catch (error) {
+    console.warn('[document-renderer] No se pudo precalentar Chrome:', error.message);
+    return false;
+  }
+}
+
+async function cerrarBrowser() {
+  const browser = browserInstance;
+  browserInstance = null;
+  browserPromise = null;
+  if (browser?.connected) await browser.close().catch(() => {});
+}
+
+function obtenerEstadoBrowser() {
+  return {
+    chrome: Boolean(resolverEjecutable()),
+    browserActivo: Boolean(browserInstance?.connected),
+    cacheDir: CACHE_DIR,
+  };
+}
+
+module.exports = {
+  CACHE_DIR,
+  asegurarChrome,
+  resolverEjecutable,
+  obtenerBrowser,
+  calentarNavegador,
+  cerrarBrowser,
+  obtenerEstadoBrowser,
+};

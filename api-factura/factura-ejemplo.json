@@ -1,17 +1,19 @@
 {
-  "id": "F-0001",
-  "fecha": "2026-08-07T10:30:00-06:00",
+  "origen": "mi-proyecto",
+  "referenciaExterna": "venta:0001",
+  "fecha": "2026-08-19T20:00:00-06:00",
   "moneda": "CRC",
   "condicionVenta": "01",
   "medioPago": "02",
   "emisor": {
-    "nombre": "Nombre del micrositio",
-    "identificacion": { "tipo": "01", "numero": "1-0000-0000" },
-    "correo": "emisor@example.com"
+    "nombre": "Nombre del negocio",
+    "identificacion": { "tipo": "02", "numero": "3-101-000000" },
+    "correo": "facturacion@example.com",
+    "logoUrl": null
   },
   "receptor": {
     "nombre": "Nombre del cliente",
-    "identificacion": { "tipo": "01", "numero": "2-0000-0000" },
+    "identificacion": { "tipo": "01", "numero": "1-1111-1111" },
     "correo": "cliente@example.com"
   },
   "items": [

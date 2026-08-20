@@ -2,11 +2,14 @@ const express = require('express');
 require('dotenv').config();
 
 const facturaRoutes = require('./routes/facturaRoutes');
+const { asegurarEsquemaCompartido } = require('./controllers/facturaController');
 const { createDocumentRoutes } = require('../document-renderer/routes');
+const { calentarNavegador, obtenerEstadoBrowser, cerrarBrowser } = require('../document-renderer/browserManager');
+const { obtenerEstadoRenderer } = require('../document-renderer/pdfRenderer');
 
 const app = express();
-const API_VERSION = '1.2.0';
-const TEMPLATE_VERSION = 'factura-compartida-v1';
+const API_VERSION = '1.3.0';
+const TEMPLATE_VERSION = 'factura-compartida-v2';
 
 const allowedOrigins = new Set(
   (process.env.FRONTEND_URL || '')
@@ -15,21 +18,25 @@ const allowedOrigins = new Set(
     .filter(Boolean)
 );
 
+// Este API se diseñó para ser consumido por varios proyectos. Por defecto es
+// público a nivel CORS; quien quiera restringirlo puede usar CORS_ALLOW_ALL=false
+// y declarar FRONTEND_URL con una lista separada por comas.
 function isAllowedOrigin(origin) {
   if (!origin) return true;
-  if (process.env.CORS_ALLOW_ALL === 'true') return true;
-  if (allowedOrigins.size === 0) return true;
+  if (String(process.env.CORS_ALLOW_ALL || 'true').toLowerCase() !== 'false') return true;
+  if (allowedOrigins.size === 0) return false;
   return allowedOrigins.has(origin);
 }
 
+app.disable('x-powered-by');
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-
   if (origin && isAllowedOrigin(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', process.env.CORS_ALLOW_ALL === 'true' ? '*' : origin);
+    res.setHeader('Access-Control-Allow-Origin', String(process.env.CORS_ALLOW_ALL || 'true').toLowerCase() !== 'false' ? '*' : origin);
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept, Authorization, X-Api-Key, X-Request-Id');
+    res.setHeader('Access-Control-Expose-Headers', 'Retry-After, X-Idempotent-Replay');
     res.setHeader('Access-Control-Max-Age', '86400');
   }
 
@@ -37,7 +44,6 @@ app.use((req, res, next) => {
     if (!isAllowedOrigin(origin)) return res.status(403).json({ error: 'Origen no permitido' });
     return res.sendStatus(204);
   }
-
   next();
 });
 
@@ -55,41 +61,37 @@ const contrato = {
   servicio: 'API compartida de facturación al cliente',
   version: API_VERSION,
   templateVersion: TEMPLATE_VERSION,
-  descripcion: 'Registra una factura, permite recuperarla como JSON y genera un PDF visual de solo lectura.',
+  descripcion: 'Registra y consulta facturas y genera un comprobante PDF visual de solo lectura.',
   endpoints: {
     crear: 'POST /api/facturas',
+    listar: 'GET /api/facturas?origen=&referenciaExterna=&limit=&offset=',
     consultarJson: 'GET /api/facturas/:id',
     documentoPdf: 'GET /api/documentos/facturas/:id?formato=pdf',
     actualizarLogo: 'PATCH /api/facturas/:id/logo',
     health: 'GET /health',
+    healthDocumentos: 'GET /health/documentos',
     contrato: 'GET /api/contrato',
   },
-  consumoPorOtrosServicios: {
-    paso1: 'Enviar la factura mediante POST /api/facturas.',
-    paso2: 'Guardar el id retornado por el API.',
-    paso3: 'Otros servicios pueden recuperar los datos con GET /api/facturas/:id.',
-    paso4: 'El comprobante visual se obtiene con GET /api/documentos/facturas/:id?formato=pdf.',
+  interoperabilidad: {
+    origen: 'Identificador opcional del sistema cliente, por ejemplo educontrol.',
+    referenciaExterna: 'Referencia opcional e idempotente del cliente, por ejemplo cargo:42.',
+    logo: 'Opcional. emisor.logoUrl acepta PNG, JPG o WEBP en data URL de hasta 500 KB.',
   },
-  logo: 'Opcional. Enviar emisor.logoUrl como data URL PNG, JPG o WEBP. El diseño no está amarrado a EduControl ni a otro micrositio.',
 };
 
 app.get('/', (req, res) => res.json({ estado: 'activo', ...contrato }));
 app.get('/api/contrato', (req, res) => res.json(contrato));
 app.get('/health', (req, res) => res.json({ status: 'ok', version: API_VERSION, templateVersion: TEMPLATE_VERSION }));
-
-app.get('/health/documentos', async (req, res) => {
-  try {
-    const { resolverEjecutable } = require('../document-renderer/browserManager');
-    const executablePath = resolverEjecutable();
-    res.status(executablePath ? 200 : 503).json({
-      status: executablePath ? 'ok' : 'chrome_no_disponible',
-      chrome: Boolean(executablePath),
-      version: API_VERSION,
-      templateVersion: TEMPLATE_VERSION,
-    });
-  } catch {
-    res.status(503).json({ status: 'error', chrome: false, version: API_VERSION, templateVersion: TEMPLATE_VERSION });
-  }
+app.get('/health/documentos', (req, res) => {
+  const browser = obtenerEstadoBrowser();
+  const renderer = obtenerEstadoRenderer();
+  res.status(browser.chrome ? 200 : 503).json({
+    status: browser.chrome ? 'ok' : 'chrome_no_disponible',
+    version: API_VERSION,
+    templateVersion: TEMPLATE_VERSION,
+    ...browser,
+    renderer,
+  });
 });
 
 app.use('/api/facturas', facturaRoutes);
@@ -97,8 +99,10 @@ app.use('/api/documentos', createDocumentRoutes());
 
 app.use((err, req, res, next) => {
   console.error('[error]', err.message);
-  res.status(err.status || 400).json({
-    error: err.status >= 500 ? 'Error interno del servicio' : 'Solicitud inválida',
+  const status = Number(err.status) || 400;
+  if (status === 503) res.set('Retry-After', '2');
+  res.status(status).json({
+    error: status >= 500 ? 'Error interno del servicio' : 'Solicitud inválida',
     detalle: err.message,
   });
 });
@@ -106,9 +110,20 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3000;
 
 if (require.main === module) {
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`API compartida de facturación al cliente corriendo en el puerto ${PORT}`);
+  const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`API compartida de facturación corriendo en el puerto ${PORT}`);
+    Promise.allSettled([asegurarEsquemaCompartido(), calentarNavegador()]);
   });
+
+  const cerrar = async () => {
+    server.close(async () => {
+      await cerrarBrowser().catch(() => {});
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(0), 5000).unref();
+  };
+  process.once('SIGTERM', cerrar);
+  process.once('SIGINT', cerrar);
 }
 
 module.exports = app;

@@ -1,6 +1,6 @@
 {
   "name": "api-factura",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "description": "API REST compartida de facturación al cliente con React/JSX y PDF A4 minimalista, legible y de solo lectura.",
   "main": "src/server.js",
   "scripts": {

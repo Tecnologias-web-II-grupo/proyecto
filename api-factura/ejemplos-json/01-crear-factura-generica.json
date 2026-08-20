@@ -1,0 +1,46 @@
+{
+  "origen": "sistema-cliente-demo",
+  "referenciaExterna": "venta:1001",
+  "fecha": "2026-08-20T10:00:00-06:00",
+  "moneda": "CRC",
+  "condicionVenta": "01",
+  "medioPago": "01",
+  "emisor": {
+    "nombre": "Negocio Demo",
+    "identificacion": {
+      "tipo": "02",
+      "numero": "3-101-123456"
+    },
+    "correo": "ventas@negociodemo.com",
+    "logoUrl": null
+  },
+  "receptor": {
+    "nombre": "Cliente de Prueba",
+    "identificacion": {
+      "tipo": "01",
+      "numero": "112233445"
+    },
+    "correo": "cliente@correo.com"
+  },
+  "items": [
+    {
+      "numeroLinea": 1,
+      "detalle": "Servicio de prueba",
+      "cantidad": 1,
+      "precioUnitario": 25000,
+      "descuento": 0,
+      "impuesto": {
+        "tarifa": 0
+      },
+      "subtotal": 25000,
+      "montoTotalLinea": 25000
+    }
+  ],
+  "totales": {
+    "totalGravado": 0,
+    "totalExento": 25000,
+    "totalDescuentos": 0,
+    "totalImpuesto": 0,
+    "totalComprobante": 25000
+  }
+}

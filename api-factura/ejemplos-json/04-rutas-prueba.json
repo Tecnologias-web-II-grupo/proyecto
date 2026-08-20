@@ -1,0 +1,33 @@
+{
+  "baseUrl": "https://proyecto-kn7p.onrender.com",
+  "crearFactura": {
+    "metodo": "POST",
+    "ruta": "/api/facturas",
+    "body": "Usar 01-crear-factura-generica.json o 02-crear-factura-educontrol.json"
+  },
+  "obtenerFacturaJson": {
+    "metodo": "GET",
+    "ruta": "/api/facturas/{id}",
+    "body": null
+  },
+  "imprimirPdfAutomatico": {
+    "metodo": "GET",
+    "ruta": "/api/documentos/facturas/{id}?formato=pdf&plantilla=auto",
+    "body": null
+  },
+  "imprimirPdfGenerico": {
+    "metodo": "GET",
+    "ruta": "/api/documentos/facturas/{id}?formato=pdf&plantilla=generica",
+    "body": null
+  },
+  "imprimirPdfEduControl": {
+    "metodo": "GET",
+    "ruta": "/api/documentos/facturas/{id}?formato=pdf&plantilla=educontrol",
+    "body": null
+  },
+  "actualizarLogo": {
+    "metodo": "PATCH",
+    "ruta": "/api/facturas/{id}/logo",
+    "body": "Usar 03-actualizar-logo.json"
+  }
+}

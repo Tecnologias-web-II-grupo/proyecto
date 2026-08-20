@@ -8,8 +8,8 @@ const { calentarNavegador, obtenerEstadoBrowser, cerrarBrowser } = require('../d
 const { obtenerEstadoRenderer } = require('../document-renderer/pdfRenderer');
 
 const app = express();
-const API_VERSION = '1.4.0';
-const TEMPLATE_VERSION = 'factura-formal-v3';
+const API_VERSION = '1.5.0';
+const TEMPLATE_VERSION = 'dual-educontrol-generica-v1';
 
 const allowedOrigins = new Set(
   (process.env.FRONTEND_URL || '')
@@ -66,7 +66,7 @@ const contrato = {
     crear: 'POST /api/facturas',
     listar: 'GET /api/facturas?origen=&referenciaExterna=&limit=&offset=',
     consultarJson: 'GET /api/facturas/:id',
-    documentoPdf: 'GET /api/documentos/facturas/:id?formato=pdf',
+    documentoPdf: 'GET /api/documentos/facturas/:id?formato=pdf&plantilla=auto|educontrol|generica',
     actualizarLogo: 'PATCH /api/facturas/:id/logo',
     health: 'GET /health',
     healthDocumentos: 'GET /health/documentos',
@@ -76,6 +76,7 @@ const contrato = {
     origen: 'Identificador opcional del sistema cliente, por ejemplo educontrol.',
     referenciaExterna: 'Referencia opcional e idempotente del cliente, por ejemplo cargo:42.',
     logo: 'Opcional. emisor.logoUrl acepta PNG, JPG o WEBP en data URL de hasta 500 KB.',
+    plantillaPdf: 'auto usa EduControl cuando origen=educontrol; para otros sistemas usa la plantilla genérica. También puede forzarse con plantilla=educontrol o plantilla=generica.',
   },
 };
 

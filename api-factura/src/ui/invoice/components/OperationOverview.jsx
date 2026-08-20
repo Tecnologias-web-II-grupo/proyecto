@@ -10,7 +10,7 @@ function OperationOverview({ factura }) {
 
   return React.createElement('section', { className: 'operation-overview' },
     React.createElement('div', { className: 'operation-copy' },
-      React.createElement('span', { className: 'operation-label' }, 'Concepto principal'),
+      React.createElement('span', { className: 'operation-label' }, 'Concepto'),
       React.createElement('strong', null, descripcion),
       adicionales ? React.createElement('small', null, `${adicionales} concepto${adicionales === 1 ? '' : 's'} adicional${adicionales === 1 ? '' : 'es'}`) : null
     ),

@@ -10,8 +10,8 @@ const { calentarNavegador, obtenerEstadoBrowser, cerrarBrowser } = require('../d
 const { obtenerEstadoRenderer } = require('../document-renderer/pdfRenderer');
 
 const app = express();
-const API_VERSION = '2.6.0';
-const TEMPLATE_VERSION = 'factura-v44-react-readable-final-v12';
+const API_VERSION = '2.8.0';
+const TEMPLATE_VERSION = 'factura-v44-react-polished-final-v14';
 
 const allowedOrigins = new Set(
   (process.env.FRONTEND_URL || '')

@@ -30,7 +30,7 @@ function Person({title,p,side}) {
     ['Nombre comercial',p?.nombreComercial],['Actividad económica',p?.actividadEconomica],['Registro fiscal bebidas',p?.registroBebidasAlcoholicas],
     ['Teléfono',t?.numero ? `${t.codigoPais?`+${t.codigoPais} `:''}${t.numero}`:null],
     ['Ubicación',[u.provincia&&`Prov. ${u.provincia}`,u.canton&&`Cant. ${u.canton}`,u.distrito&&`Dist. ${u.distrito}`,u.barrio&&`Barrio ${u.barrio}`].filter(Boolean).join(' · ')],
-    ['Otras señas',u.otrasSenas||u.otrasSenasExtranjero],['Correos adicionales',Array.isArray(p?.correos)?p.correos.join(', '):null]
+    ['Otras señas',u.otrasSenas||u.otrasSenasExtranjero],['Correos adicionales',Array.from(new Set([...(Array.isArray(p?.correosAdicionales)?p.correosAdicionales:[]),...(Array.isArray(p?.correos)?p.correos:[])] .filter(Boolean))).join(', ')||null]
   ].filter(([,v])=>v);
   return React.createElement('section',{className:`person-card ${side}`},
     React.createElement(SectionTitle,{kicker:side==='issuer'?'QUIEN EMITE':'QUIEN RECIBE',title}),
@@ -113,7 +113,7 @@ function Summary({f}) {
     ['Mercancías gravadas',t.totalMercanciasGravadas],['Mercancías exentas',t.totalMercanciasExentas],['Mercancías exoneradas',t.totalMercanciasExoneradas],['Mercancías no sujetas',t.totalMercanciasNoSujetas],
     ['Total gravado',t.totalGravado],['Total exento',t.totalExento],['Total exonerado',t.totalExonerado],['Total no sujeto',t.totalNoSujeto],
     ['Total venta',t.totalVenta],['Descuentos',t.totalDescuentos],['Venta neta',t.totalVentaNeta],['Impuestos',t.totalImpuesto],['IVA devuelto',t.totalIVADevuelto],['Otros cargos',t.totalOtrosCargos]
-  ].filter(([,v])=>v!==undefined&&v!==null&&Math.abs(Number(v)||0)>0.000001);
+  ].filter(([,v])=>v!==undefined&&v!==null);
   const medios=Array.isArray(t.mediosPago)?t.mediosPago:[];
   const refs=Array.isArray(f.referencias)?f.referencias:[];
   const cargos=Array.isArray(f.otrosCargos)?f.otrosCargos:[];
@@ -124,6 +124,7 @@ function Summary({f}) {
       React.createElement('div',{className:'closing-meta'},
         f.perfilValidacion?React.createElement('span',null,React.createElement('b',null,'Perfil'),texto(f.perfilValidacion)):null,
         React.createElement('span',null,React.createElement('b',null,'Factura'),texto(f.id,'—')),
+        (f.detalleCondicionVenta||f.detalleCondicionVentaOtro)?React.createElement('span',null,React.createElement('b',null,'Detalle condición'),texto(f.detalleCondicionVenta||f.detalleCondicionVentaOtro)):null,
         medios.length?React.createElement('span',null,React.createElement('b',null,'Pago'),medios.map(m=>`${cod(MP,m.tipo)} · ${dinero(m.total??m.monto,f.moneda)}`).join(' | ')):null,
         React.createElement('span',null,React.createElement('b',null,'Formato'),'PDF de solo lectura')
       ),
@@ -134,7 +135,7 @@ function Summary({f}) {
       ):React.createElement('p',{className:'closing-help'},'Comprobante generado por el servicio de facturación con los datos suministrados por el sistema emisor.')
     ),
     React.createElement('div',{className:'totals'},React.createElement('h3',null,'Resumen de importes'),
-      ...rows.map(([l,v])=>React.createElement('div',{className:'total-row',key:l},React.createElement('span',null,l),React.createElement('strong',null,dinero(v,f.moneda)))),
+      React.createElement('div',{className:'totals-grid'},...rows.map(([l,v])=>React.createElement('div',{className:'total-row',key:l},React.createElement('span',null,l),React.createElement('strong',null,dinero(v,f.moneda))))),
       React.createElement('div',{className:'grand'},React.createElement('span',null,'TOTAL COMPROBANTE'),React.createElement('strong',null,dinero(t.totalComprobante,f.moneda)))
     )
   );

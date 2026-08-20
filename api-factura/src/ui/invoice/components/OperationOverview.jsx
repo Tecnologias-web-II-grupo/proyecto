@@ -10,12 +10,12 @@ function OperationOverview({ factura }) {
 
   return React.createElement('section', { className: 'operation-overview' },
     React.createElement('div', { className: 'operation-copy' },
-      React.createElement('span', { className: 'operation-label' }, 'DESCRIPCIÓN'),
+      React.createElement('span', { className: 'operation-label' }, 'Concepto principal'),
       React.createElement('strong', null, descripcion),
-      adicionales ? React.createElement('small', null, `+ ${adicionales} concepto${adicionales === 1 ? '' : 's'} adicional${adicionales === 1 ? '' : 'es'}`) : null
+      adicionales ? React.createElement('small', null, `${adicionales} concepto${adicionales === 1 ? '' : 's'} adicional${adicionales === 1 ? '' : 'es'}`) : null
     ),
     React.createElement('div', { className: 'operation-total' },
-      React.createElement('span', null, 'TOTAL DEL COMPROBANTE'),
+      React.createElement('span', null, 'Total'),
       React.createElement('strong', null, dinero(total, factura.moneda))
     )
   );

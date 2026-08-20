@@ -12,11 +12,11 @@ function GenericInvoice({ factura }) {
     React.createElement(InvoiceHeader, { factura }),
     React.createElement('div', { className: 'content' },
       React.createElement(OperationOverview, { factura }),
-      React.createElement('div', { className: 'people' },
-        React.createElement(PartyCard, { title: 'Datos del emisor', party: factura.emisor, side: 'issuer' }),
-        React.createElement(PartyCard, { title: 'Datos del cliente', party: factura.receptor, side: 'client' })
-      ),
       React.createElement(ItemsTable, { factura }),
+      React.createElement('div', { className: 'people' },
+        React.createElement(PartyCard, { title: 'Emisor', party: factura.emisor, side: 'issuer' }),
+        React.createElement(PartyCard, { title: 'Cliente', party: factura.receptor, side: 'client' })
+      ),
       React.createElement(FiscalDetails, { factura }),
       React.createElement(InvoiceSummary, { factura })
     ),

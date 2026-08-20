@@ -2,54 +2,23 @@ const pool = require('../db/database');
 const { encrypt, decrypt } = require('../middleware/crypto');
 const { randomUUID } = require('crypto');
 
-let schemaPromise = null;
-
-async function columnaExiste(nombre) {
-  const [[row]] = await pool.query(
-    `SELECT COUNT(*) AS existe
-     FROM information_schema.COLUMNS
-     WHERE TABLE_SCHEMA = DATABASE()
-       AND TABLE_NAME = 'facturas'
-       AND COLUMN_NAME = ?`,
-    [nombre]
-  );
-  return Number(row?.existe || 0) > 0;
-}
-
-async function indiceExiste(nombre) {
-  const [[row]] = await pool.query(
-    `SELECT COUNT(*) AS existe
-     FROM information_schema.STATISTICS
-     WHERE TABLE_SCHEMA = DATABASE()
-       AND TABLE_NAME = 'facturas'
-       AND INDEX_NAME = ?`,
-    [nombre]
-  );
-  return Number(row?.existe || 0) > 0;
-}
-
 async function asegurarEsquemaCompartido() {
-  if (schemaPromise) return schemaPromise;
-
-  schemaPromise = (async () => {
-    if (!(await columnaExiste('emisor_logo'))) {
-      await pool.query('ALTER TABLE facturas ADD COLUMN emisor_logo LONGTEXT NULL AFTER emisor_correo');
-    }
-    if (!(await columnaExiste('referencia_externa'))) {
-      await pool.query('ALTER TABLE facturas ADD COLUMN referencia_externa VARCHAR(100) NULL AFTER total_comprobante');
-    }
-    if (!(await columnaExiste('origen'))) {
-      await pool.query('ALTER TABLE facturas ADD COLUMN origen VARCHAR(80) NULL AFTER referencia_externa');
-    }
-    if (!(await indiceExiste('idx_facturas_origen_referencia'))) {
-      await pool.query('CREATE INDEX idx_facturas_origen_referencia ON facturas (origen, referencia_externa)');
-    }
-  })().catch((error) => {
-    schemaPromise = null;
-    throw error;
-  });
-
-  return schemaPromise;
+  // No se memoriza el resultado indefinidamente. Durante desarrollo/defensa la
+  // base puede ser restaurada mientras el proceso de Render sigue vivo; en ese
+  // caso una promesa cacheada haría creer que columnas como emisor_logo aún
+  // existen. Esta verificación es liviana y mantiene el API autocurable.
+  if (!(await columnaExiste('emisor_logo'))) {
+    await pool.query('ALTER TABLE facturas ADD COLUMN emisor_logo LONGTEXT NULL AFTER emisor_correo');
+  }
+  if (!(await columnaExiste('referencia_externa'))) {
+    await pool.query('ALTER TABLE facturas ADD COLUMN referencia_externa VARCHAR(100) NULL AFTER total_comprobante');
+  }
+  if (!(await columnaExiste('origen'))) {
+    await pool.query('ALTER TABLE facturas ADD COLUMN origen VARCHAR(80) NULL AFTER referencia_externa');
+  }
+  if (!(await indiceExiste('idx_facturas_origen_referencia'))) {
+    await pool.query('CREATE INDEX idx_facturas_origen_referencia ON facturas (origen, referencia_externa)');
+  }
 }
 
 function normalizarTexto(valor, maximo) {

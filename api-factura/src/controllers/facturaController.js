@@ -2,6 +2,30 @@ const pool = require('../db/database');
 const { encrypt, decrypt } = require('../middleware/crypto');
 const { randomUUID } = require('crypto');
 
+async function columnaExiste(nombre) {
+  const [[row]] = await pool.query(
+    `SELECT COUNT(*) AS existe
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'facturas'
+       AND COLUMN_NAME = ?`,
+    [nombre]
+  );
+  return Number(row?.existe || 0) > 0;
+}
+
+async function indiceExiste(nombre) {
+  const [[row]] = await pool.query(
+    `SELECT COUNT(*) AS existe
+     FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'facturas'
+       AND INDEX_NAME = ?`,
+    [nombre]
+  );
+  return Number(row?.existe || 0) > 0;
+}
+
 async function asegurarEsquemaCompartido() {
   // No se memoriza el resultado indefinidamente. Durante desarrollo/defensa la
   // base puede ser restaurada mientras el proceso de Render sigue vivo; en ese

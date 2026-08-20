@@ -1,186 +1,122 @@
 const React = require('react');
 
-function texto(valor, fallback = '') {
-  if (valor === null || valor === undefined || valor === '') return fallback;
-  return String(valor);
+function texto(v, fallback = 'No indicado') {
+  if (v === undefined || v === null || v === '') return fallback;
+  return String(v);
 }
-
-function formatearFecha(fecha) {
-  const match = String(fecha || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (match) return `${match[3]}/${match[2]}/${match[1]}`;
-  const parsed = new Date(fecha);
-  if (Number.isNaN(parsed.getTime())) return texto(fecha, 'No indicada');
-  return parsed.toLocaleDateString('es-CR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+function fecha(v) {
+  if (!v) return 'No indicada';
+  const d = new Date(v); if (Number.isNaN(d.getTime())) return texto(v);
+  return new Intl.DateTimeFormat('es-CR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(d);
 }
-
-function formatoMoneda(valor, moneda) {
-  const numero = Number(valor || 0);
-  const codigo = String(moneda || 'CRC').toUpperCase() === 'USD' ? 'USD' : 'CRC';
-  return new Intl.NumberFormat('es-CR', {
-    style: 'currency', currency: codigo, minimumFractionDigits: 2, maximumFractionDigits: 2,
-  }).format(numero);
+function dinero(v, moneda = 'CRC') {
+  const n = Number(v || 0); const c = String(moneda || 'CRC').toUpperCase();
+  try { return new Intl.NumberFormat('es-CR', { style: 'currency', currency: c, minimumFractionDigits: 2 }).format(n); }
+  catch { return `${c} ${n.toFixed(2)}`; }
 }
+function ini(nombre) { return texto(nombre, 'F').split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0]).join('').toUpperCase(); }
 
-const TIPOS_IDENTIFICACION = {
-  '01': 'Persona física', '02': 'Persona jurídica', '03': 'DIMEX', '04': 'NITE',
-};
-const CONDICIONES_VENTA = {
-  '01': 'Contado', '02': 'Crédito', '03': 'Consignación', '04': 'Apartado',
-  '05': 'Arrendamiento con opción de compra', '06': 'Arrendamiento financiero',
-  '07': 'Cobro a favor de tercero', '08': 'Servicios al Estado a crédito',
-  '09': 'Servicios al Estado de contado', '10': 'Pago de venta a crédito', '11': 'Pago de venta de contado',
-};
-const MEDIOS_PAGO = {
-  '01': 'Efectivo', '02': 'Tarjeta', '03': 'Cheque', '04': 'Transferencia / depósito',
-  '05': 'Recaudado por terceros', '06': 'SINPE Móvil', '07': 'Plataforma digital', '99': 'Otro',
-};
+const ID = { '01':'Persona física','02':'Persona jurídica','03':'DIMEX','04':'NITE','05':'Extranjero no domiciliado','06':'No contribuyente' };
+const CV = { '01':'Contado','02':'Crédito','03':'Consignación','04':'Apartado','05':'Arrendamiento con opción de compra','06':'Arrendamiento financiero','07':'Cobro a favor de tercero','08':'Servicios al Estado a crédito','09':'Servicios al Estado de contado','10':'Venta a crédito IVA hasta 90 días','11':'Pago de venta a crédito IVA hasta 90 días','12':'Mercancía no nacionalizada','13':'Bienes usados no contribuyente','14':'Arrendamiento operativo','15':'Arrendamiento financiero','99':'Otros' };
+const MP = { '01':'Efectivo','02':'Tarjeta','03':'Cheque','04':'Transferencia/depósito','05':'Recaudado por terceros','06':'SINPE Móvil','07':'Plataforma digital','99':'Otros' };
+function cod(map, v) { const k=texto(v,''); return map[k] ? `${map[k]} · ${k}` : texto(v); }
 
-function descripcionCodigo(mapa, codigo) {
-  const valor = texto(codigo, 'No indicado');
-  return mapa[valor] ? `${mapa[valor]} · ${valor}` : valor;
-}
-
-function iniciales(nombre) {
-  const partes = texto(nombre, 'F').trim().split(/\s+/).filter(Boolean);
-  return partes.slice(0, 2).map((p) => p[0]).join('').toUpperCase() || 'F';
-}
-
-function Dato({ etiqueta, valor, mono = false }) {
-  return React.createElement('div', { className: 'dato' },
-    React.createElement('span', { className: 'dato-label' }, etiqueta),
-    React.createElement('strong', { className: mono ? 'dato-value mono' : 'dato-value' }, texto(valor, 'No indicado'))
-  );
-}
-
-function TarjetaPersona({ titulo, persona, tipo = 'cliente' }) {
-  const identificacion = persona?.identificacion || {};
-  return React.createElement('section', { className: `persona-card ${tipo}` },
-    React.createElement('div', { className: 'persona-title' },
-      React.createElement('span', { className: 'persona-kicker' }, tipo === 'emisor' ? 'QUIEN EMITE' : 'QUIEN RECIBE'),
-      React.createElement('h2', null, titulo)
-    ),
-    React.createElement('div', { className: 'persona-grid' },
-      React.createElement(Dato, { etiqueta: 'Nombre o razón social', valor: persona?.nombre }),
-      React.createElement(Dato, { etiqueta: 'Identificación', valor: identificacion.numero, mono: true }),
-      React.createElement(Dato, { etiqueta: 'Tipo de identificación', valor: identificacion.tipo ? descripcionCodigo(TIPOS_IDENTIFICACION, identificacion.tipo) : 'No indicado' }),
-      React.createElement(Dato, { etiqueta: 'Correo electrónico', valor: persona?.correo })
+function D({l,v,mono=false}) { return React.createElement('div',{className:'datum'},React.createElement('span',{className:'label'},l),React.createElement('strong',{className:mono?'mono':''},texto(v))); }
+function SectionTitle({kicker,title}) { return React.createElement('div',{className:'section-title'},React.createElement('span',null,kicker),React.createElement('h2',null,title)); }
+function Person({title,p,side}) {
+  const u=p?.ubicacion||{}, t=p?.telefono||{};
+  const extra=[
+    ['Nombre comercial',p?.nombreComercial],['Actividad económica',p?.actividadEconomica],['Registro fiscal bebidas',p?.registroBebidasAlcoholicas],
+    ['Teléfono',t?.numero ? `${t.codigoPais?`+${t.codigoPais} `:''}${t.numero}`:null],
+    ['Ubicación',[u.provincia&&`Prov. ${u.provincia}`,u.canton&&`Cant. ${u.canton}`,u.distrito&&`Dist. ${u.distrito}`,u.barrio&&`Barrio ${u.barrio}`].filter(Boolean).join(' · ')],
+    ['Otras señas',u.otrasSenas||u.otrasSenasExtranjero],['Correos adicionales',Array.isArray(p?.correos)?p.correos.join(', '):null]
+  ].filter(([,v])=>v);
+  return React.createElement('section',{className:`person-card ${side}`},
+    React.createElement(SectionTitle,{kicker:side==='issuer'?'QUIEN EMITE':'QUIEN RECIBE',title}),
+    React.createElement('div',{className:'grid two'},
+      React.createElement(D,{l:'Nombre o razón social',v:p?.nombre}), React.createElement(D,{l:'Identificación',v:p?.identificacion?.numero,mono:true}),
+      React.createElement(D,{l:'Tipo de identificación',v:cod(ID,p?.identificacion?.tipo)}), React.createElement(D,{l:'Correo electrónico',v:p?.correo}),
+      ...extra.map(([l,v])=>React.createElement(D,{key:l,l,v}))
     )
   );
 }
-
-function Encabezado({ factura }) {
-  const emisor = factura.emisor || {};
-  const logoUrl = emisor.logoUrl || emisor.logo_url || null;
-  return React.createElement(React.Fragment, null,
-    React.createElement('header', { className: 'hero' },
-      React.createElement('div', { className: 'hero-brand' },
-        logoUrl
-          ? React.createElement('div', { className: 'logo-box' }, React.createElement('img', { src: logoUrl, alt: 'Logo', className: 'logo-img' }))
-          : React.createElement('div', { className: 'logo-fallback' }, iniciales(emisor.nombre)),
-        React.createElement('div', { className: 'brand-copy' },
-          React.createElement('span', { className: 'brand-overline' }, 'COMPROBANTE DE INGRESO'),
-          React.createElement('h1', null, texto(emisor.nombre, 'Emisor')),
-          React.createElement('span', { className: 'brand-email' }, texto(emisor.correo, ''))
-        )
-      ),
-      React.createElement('div', { className: 'invoice-id' },
-        React.createElement('span', { className: 'invoice-word' }, 'FACTURA'),
-        React.createElement('strong', { className: 'invoice-number mono' }, texto(factura.id, 'Sin número')),
-        React.createElement('span', { className: 'readonly-pill' }, 'PDF · SOLO LECTURA')
-      )
+function Header({f}) {
+  const e=f.emisor||{}, logo=e.logoUrl;
+  return React.createElement(React.Fragment,null,
+    React.createElement('header',{className:'hero'},
+      React.createElement('div',{className:'brand'}, logo?React.createElement('div',{className:'logo'},React.createElement('img',{src:logo,alt:'Logo'})):React.createElement('div',{className:'logo fallback'},ini(e.nombre)),
+        React.createElement('div',null,React.createElement('span',{className:'overline'},'COMPROBANTE DE INGRESO'),React.createElement('h1',null,texto(e.nombre,'Emisor')),React.createElement('p',null,texto(e.correo,'')))) ,
+      React.createElement('div',{className:'number'},React.createElement('span',null,'FACTURA'),React.createElement('strong',{className:'mono'},texto(f.id,'Sin número')),React.createElement('em',null,'PDF · SOLO LECTURA'))
     ),
-    React.createElement('section', { className: 'meta-strip' },
-      React.createElement(Dato, { etiqueta: 'Fecha de emisión', valor: formatearFecha(factura.fecha) }),
-      React.createElement(Dato, { etiqueta: 'Moneda', valor: texto(factura.moneda, 'CRC') }),
-      React.createElement(Dato, { etiqueta: 'Condición de venta', valor: descripcionCodigo(CONDICIONES_VENTA, factura.condicionVenta) }),
-      React.createElement(Dato, { etiqueta: 'Medio de pago', valor: descripcionCodigo(MEDIOS_PAGO, factura.medioPago) })
+    React.createElement('section',{className:'meta'},
+      React.createElement(D,{l:'Fecha de emisión',v:fecha(f.fecha)}),React.createElement(D,{l:'Moneda',v:f.moneda}),
+      React.createElement(D,{l:'Condición de venta',v:cod(CV,f.condicionVenta)}),React.createElement(D,{l:'Medio de pago',v:cod(MP,f.medioPago)}),
+      f.plazoCreditoDias!==undefined&&f.plazoCreditoDias!==null?React.createElement(D,{l:'Plazo de crédito',v:`${f.plazoCreditoDias} días`}):null,
+      f.proveedorSistemas?React.createElement(D,{l:'Proveedor de sistemas',v:f.proveedorSistemas,mono:true}):null,
+      f.totales?.tipoCambio!==undefined?React.createElement(D,{l:'Tipo de cambio',v:f.totales.tipoCambio}):null
     )
   );
 }
-
-function TablaDetalle({ factura }) {
-  const items = Array.isArray(factura.items) ? factura.items : [];
-  return React.createElement('section', { className: 'detalle-section' },
-    React.createElement('div', { className: 'section-heading' },
-      React.createElement('div', null,
-        React.createElement('span', { className: 'section-kicker' }, 'DETALLE DEL COMPROBANTE'),
-        React.createElement('h2', null, 'Conceptos facturados')
-      ),
-      React.createElement('span', { className: 'count-pill' }, `${items.length} ${items.length === 1 ? 'línea' : 'líneas'}`)
-    ),
-    React.createElement('div', { className: 'table-shell' },
-      React.createElement('table', null,
-        React.createElement('thead', null,
-          React.createElement('tr', null,
-            ['#', 'Descripción', 'Cant.', 'Precio unit.', 'Descuento', 'Imp.', 'Subtotal', 'Total']
-              .map((t) => React.createElement('th', { key: t }, t))
-          )
+function Items({f}) {
+  const items=Array.isArray(f.items)?f.items:[];
+  return React.createElement('section',{className:'block'},
+    React.createElement(SectionTitle,{kicker:'DETALLE DEL COMPROBANTE',title:'Conceptos facturados'}),
+    React.createElement('div',{className:'table-wrap'},React.createElement('table',null,
+      React.createElement('thead',null,React.createElement('tr',null,['#','CAByS','Descripción','Cant.','Unidad','Precio','Desc.','IVA','Subtotal','Total'].map(x=>React.createElement('th',{key:x},x)))),
+      React.createElement('tbody',null,items.map((it,i)=>React.createElement('tr',{key:i},
+        React.createElement('td',{className:'center'},it.numeroLinea??i+1),React.createElement('td',{className:'mono'},texto(it.codigoCabys,'—')),
+        React.createElement('td',null,texto(it.detalle)),React.createElement('td',{className:'center'},texto(it.cantidad)),React.createElement('td',{className:'center'},texto(it.unidadMedida,'—')),
+        React.createElement('td',{className:'money'},dinero(it.precioUnitario,f.moneda)),React.createElement('td',{className:'money'},dinero(it.descuento,f.moneda)),
+        React.createElement('td',{className:'center'},`${Number((it.impuestos?.[0]?.tarifa ?? it.impuesto?.tarifa) || 0)}%`),React.createElement('td',{className:'money'},dinero(it.subtotal,f.moneda)),React.createElement('td',{className:'money strong'},dinero(it.montoTotalLinea,f.moneda))
+      )))
+    )),
+    items.map((it,i)=>{
+      const desc=Array.isArray(it.descuentos)?it.descuentos:[]; const imps=Array.isArray(it.impuestos)&&it.impuestos.length?it.impuestos:(it.impuesto?[it.impuesto]:[]);
+      const comerciales=Array.isArray(it.codigosComerciales)?it.codigosComerciales:[];
+      const show=it.partidaArancelaria||comerciales.length||it.unidadMedidaComercial||it.tipoTransaccion||it.numeroVinSerie||it.registroMedicamento||it.formaFarmaceutica||(Array.isArray(it.detalleSurtido)&&it.detalleSurtido.length)||it.baseImponible!==undefined||desc.length||imps.some(x=>x.codigo||x.codigoTarifaIVA||x.monto!==undefined||x.exoneracion)||it.impuestoAsumidoEmisor!==undefined;
+      if(!show)return null;
+      return React.createElement('div',{className:'line-extra',key:`e${i}`},
+        React.createElement('h3',null,`Información complementaria · línea ${it.numeroLinea??i+1}`),
+        React.createElement('div',{className:'grid four'},
+          it.partidaArancelaria&&React.createElement(D,{l:'Partida arancelaria',v:it.partidaArancelaria}),it.unidadMedidaComercial&&React.createElement(D,{l:'Unidad comercial',v:it.unidadMedidaComercial}),
+          it.tipoTransaccion&&React.createElement(D,{l:'Tipo de transacción',v:it.tipoTransaccion}),it.numeroVinSerie&&React.createElement(D,{l:'VIN / Serie',v:it.numeroVinSerie}),
+          it.registroMedicamento&&React.createElement(D,{l:'Registro de medicamento',v:it.registroMedicamento}),it.formaFarmaceutica&&React.createElement(D,{l:'Forma farmacéutica',v:it.formaFarmaceutica}),
+          it.baseImponible!==undefined&&React.createElement(D,{l:'Base imponible',v:dinero(it.baseImponible,f.moneda)}),it.impuestoAsumidoEmisor!==undefined&&React.createElement(D,{l:'Impuesto asumido emisor',v:dinero(it.impuestoAsumidoEmisor,f.moneda)})
         ),
-        React.createElement('tbody', null,
-          items.map((item, index) => React.createElement('tr', { key: `${item.numeroLinea ?? index}-${index}` },
-            React.createElement('td', { className: 'center mono' }, texto(item.numeroLinea ?? index + 1)),
-            React.createElement('td', { className: 'desc' }, texto(item.detalle, 'Sin descripción')),
-            React.createElement('td', { className: 'center' }, texto(item.cantidad, '0')),
-            React.createElement('td', { className: 'money' }, formatoMoneda(item.precioUnitario, factura.moneda)),
-            React.createElement('td', { className: 'money' }, formatoMoneda(item.descuento, factura.moneda)),
-            React.createElement('td', { className: 'center' }, `${Number(item.impuesto?.tarifa || 0)}%`),
-            React.createElement('td', { className: 'money' }, formatoMoneda(item.subtotal, factura.moneda)),
-            React.createElement('td', { className: 'money strong-money' }, formatoMoneda(item.montoTotalLinea, factura.moneda))
-          ))
-        )
-      )
-    )
+        comerciales.length?React.createElement('p',{className:'small'},`Códigos comerciales: ${comerciales.map(c=>`${c.tipo||'—'}:${c.codigo||'—'}`).join(' · ')}`):null,
+        Array.isArray(it.detalleSurtido)&&it.detalleSurtido.length?React.createElement('p',{className:'small'},`Componentes de surtido/paquete: ${it.detalleSurtido.map(c=>`${c.codigoCabys||'—'} ${c.detalle||''}`).join(' · ')}`):null,
+        desc.length?React.createElement('div',{className:'mini-table'},React.createElement('b',null,'Descuentos'),...desc.map((d,j)=>React.createElement('span',{key:j},`${d.codigo||'—'}${d.codigoOtro?` / ${d.codigoOtro}`:''} · ${d.naturaleza||'Sin naturaleza'} · ${dinero(d.monto,f.moneda)}`))):null,
+        imps.length?React.createElement('div',{className:'mini-table'},React.createElement('b',null,'Impuestos'),...imps.map((x,j)=>React.createElement('span',{key:j},`${x.codigo||'—'}${x.codigoOtro?` / ${x.codigoOtro}`:''} · tarifa ${x.tarifa??0}% · código tarifa ${x.codigoTarifaIVA||'—'} · monto ${dinero(x.monto??0,f.moneda)}${x.exoneracion?` · Exoneración ${x.exoneracion.numeroDocumento||''} ${x.exoneracion.nombreInstitucion||''}`:''}`))):null
+      );
+    })
   );
 }
-
-function Cierre({ factura }) {
-  const t = factura.totales || {};
-  const filas = [
-    ['Subtotal gravado', t.totalGravado], ['Subtotal exento', t.totalExento],
-    ['Descuentos', t.totalDescuentos], ['Impuestos', t.totalImpuesto],
-  ];
-  return React.createElement('section', { className: 'closing-grid' },
-    React.createElement('div', { className: 'document-note' },
-      React.createElement('span', { className: 'section-kicker' }, 'INFORMACIÓN DEL DOCUMENTO'),
-      React.createElement('h3', null, 'Comprobante para el cliente'),
-      React.createElement('p', null, 'Documento generado por el servicio de facturación en formato PDF de solo lectura. Su contenido corresponde a los datos registrados por el sistema emisor.'),
-      React.createElement('div', { className: 'security-row' },
-        React.createElement('span', null, 'Solo lectura'),
-        React.createElement('span', null, `Factura ${texto(factura.id, '')}`)
-      )
-    ),
-    React.createElement('div', { className: 'summary-card' },
-      React.createElement('div', { className: 'summary-title' }, 'Resumen de importes'),
-      filas.map(([label, value]) => React.createElement('div', { className: 'summary-row', key: label },
-        React.createElement('span', null, label), React.createElement('strong', null, formatoMoneda(value, factura.moneda))
-      )),
-      React.createElement('div', { className: 'grand-total' },
-        React.createElement('span', null, 'TOTAL'),
-        React.createElement('strong', null, formatoMoneda(t.totalComprobante, factura.moneda))
-      )
-    )
+function Summary({f}) {
+  const t=f.totales||{};
+  const rows=[
+    ['Servicios gravados',t.totalServiciosGravados],['Servicios exentos',t.totalServiciosExentos],['Servicios exonerados',t.totalServiciosExonerados],['Servicios no sujetos',t.totalServiciosNoSujetos],
+    ['Mercancías gravadas',t.totalMercanciasGravadas],['Mercancías exentas',t.totalMercanciasExentas],['Mercancías exoneradas',t.totalMercanciasExoneradas],['Mercancías no sujetas',t.totalMercanciasNoSujetas],
+    ['Total gravado',t.totalGravado],['Total exento',t.totalExento],['Total exonerado',t.totalExonerado],['Total no sujeto',t.totalNoSujeto],['Total venta',t.totalVenta],['Descuentos',t.totalDescuentos],['Venta neta',t.totalVentaNeta],['Impuestos',t.totalImpuesto],['IVA devuelto',t.totalIVADevuelto],['Otros cargos',t.totalOtrosCargos]
+  ].filter(([,v])=>v!==undefined&&v!==null);
+  return React.createElement('section',{className:'summary'},
+    React.createElement('div',{className:'note'},React.createElement(SectionTitle,{kicker:'INFORMACIÓN DEL DOCUMENTO',title:'Comprobante para el cliente'}),
+      React.createElement('p',null,'Documento generado por el servicio de facturación en formato PDF de solo lectura. Incluye la información fiscal suministrada por el sistema emisor para su representación visual.'),
+      f.perfilValidacion?React.createElement('span',{className:'pill'},`Perfil: ${f.perfilValidacion}`):null,
+      f.detalleCondicionVentaOtro?React.createElement('p',{className:'small'},`Detalle condición de venta: ${f.detalleCondicionVentaOtro}`):null),
+    React.createElement('div',{className:'totals'},React.createElement('h3',null,'Resumen de importes'),...rows.map(([l,v])=>React.createElement('div',{className:'total-row',key:l},React.createElement('span',null,l),React.createElement('strong',null,dinero(v,f.moneda)))),React.createElement('div',{className:'grand'},React.createElement('span',null,'TOTAL COMPROBANTE'),React.createElement('strong',null,dinero(t.totalComprobante,f.moneda))))
   );
 }
-
-function FacturaDocument({ factura }) {
-  const emisor = factura.emisor || {};
-  const receptor = factura.receptor || {};
-  return React.createElement('main', { className: 'factura' },
-    React.createElement(Encabezado, { factura }),
-    React.createElement('div', { className: 'content' },
-      React.createElement('div', { className: 'people-grid' },
-        React.createElement(TarjetaPersona, { titulo: 'Datos del emisor', persona: emisor, tipo: 'emisor' }),
-        React.createElement(TarjetaPersona, { titulo: 'Datos del cliente', persona: receptor, tipo: 'cliente' })
-      ),
-      React.createElement(TablaDetalle, { factura }),
-      React.createElement(Cierre, { factura })
-    ),
-    React.createElement('footer', { className: 'footer' },
-      React.createElement('span', null, texto(emisor.nombre, 'Emisor')),
-      React.createElement('span', { className: 'mono' }, texto(factura.id, '')),
-      React.createElement('span', null, 'Comprobante PDF de solo lectura')
-    )
+function Extras({f}) {
+  const medios=f.totales?.mediosPago||[], refs=f.referencias||[], cargos=f.otrosCargos||[], otros=f.otros||[];
+  if(!medios.length&&!refs.length&&!cargos.length&&!otros.length)return null;
+  return React.createElement('section',{className:'block page-break-avoid'},
+    React.createElement(SectionTitle,{kicker:'INFORMACIÓN COMPLEMENTARIA',title:'Datos adicionales del comprobante'}),
+    medios.length?React.createElement('div',{className:'extra-card'},React.createElement('h3',null,'Desglose de medios de pago'),...medios.map((m,i)=>React.createElement('p',{key:i},`${cod(MP,m.tipo)} · ${dinero(m.total,f.moneda)}${m.detalleOtro?` · ${m.detalleOtro}`:''}`))):null,
+    cargos.length?React.createElement('div',{className:'extra-card'},React.createElement('h3',null,'Otros cargos'),...cargos.map((c,i)=>React.createElement('p',{key:i},`${c.tipoDocumento||'—'}${c.tipoDocumentoOtro?` / ${c.tipoDocumentoOtro}`:''} · ${c.detalle||''} · ${c.porcentaje!==undefined?`${c.porcentaje}% · `:''}${dinero(c.monto,f.moneda)}${c.tercero?.identificacion?.numero?` · Tercero ${c.tercero.identificacion.numero}`:''}`))):null,
+    refs.length?React.createElement('div',{className:'extra-card'},React.createElement('h3',null,'Información de referencia'),...refs.map((r,i)=>React.createElement('p',{key:i},`${r.tipoDocumento||'—'} · ${r.numero||'—'} · ${fecha(r.fechaEmision)} · código ${r.codigo||'—'} · ${r.razon||''}`))):null,
+    otros.length?React.createElement('div',{className:'extra-card'},React.createElement('h3',null,'Otros datos'),...otros.map((o,i)=>React.createElement('p',{key:i},typeof o==='string'?o:(o.texto||o.contenido||JSON.stringify(o))))):null
   );
 }
+function FacturaDocument({factura:f}) { return React.createElement('main',{className:'invoice'},React.createElement(Header,{f}),React.createElement('div',{className:'content'},React.createElement('div',{className:'people'},React.createElement(Person,{title:'Datos del emisor',p:f.emisor,side:'issuer'}),React.createElement(Person,{title:'Datos del cliente',p:f.receptor,side:'client'})),React.createElement(Items,{f}),React.createElement(Extras,{f}),React.createElement(Summary,{f})),React.createElement('footer',null,React.createElement('span',null,texto(f.emisor?.nombre,'Emisor')),React.createElement('span',{className:'mono'},texto(f.id,'')),React.createElement('span',null,'Comprobante PDF de solo lectura'))); }
 
-module.exports = { FacturaDocument, formatoMoneda, formatearFecha };
+module.exports={FacturaDocument,formatoMoneda:dinero,formatearFecha:fecha};

@@ -27,6 +27,7 @@ function normalizarFacturaEntrada(req, res, next) {
       correo: parte.correo ?? parte.email,
       correos: parte.correos ?? parte.emails,
       logoUrl: parte.logoUrl ?? parte.logo_url ?? parte.logo_data,
+      logoUrlBlanco: parte.logoUrlBlanco ?? parte.logo_url_blanco ?? parte.logoBlanco ?? parte.logo_blanco,
       registroBebidasAlcoholicas: parte.registroBebidasAlcoholicas ?? parte.registro_bebidas_alcoholicas,
       identificacion: {
         ...identificacion,
@@ -179,16 +180,18 @@ function validateFactura(body = {}) {
     maxLen('proveedorSistemas', body.proveedorSistemas, 20);
   }
 
-  const logo = body.emisor?.logoUrl || body.emisor?.logo_data;
-  if (logo) {
+  const validarLogo = (campo, logo) => {
+    if (!logo) return;
     const match = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=\s]+)$/i.exec(String(logo).trim());
-    if (!match) errors.push('emisor.logoUrl debe ser una imagen PNG, JPG o WEBP en formato data URL');
+    if (!match) errors.push(`${campo} debe ser una imagen PNG, JPG o WEBP en formato data URL`);
     else {
       const bytes = Buffer.from(match[2].replace(/\s+/g, ''), 'base64');
-      if (!bytes.length) errors.push('emisor.logoUrl está vacío');
-      if (bytes.length > 500 * 1024) errors.push('emisor.logoUrl excede 500 KB');
+      if (!bytes.length) errors.push(`${campo} está vacío`);
+      if (bytes.length > 500 * 1024) errors.push(`${campo} excede 500 KB`);
     }
-  }
+  };
+  validarLogo('emisor.logoUrl', body.emisor?.logoUrl || body.emisor?.logo_data);
+  validarLogo('emisor.logoUrlBlanco', body.emisor?.logoUrlBlanco || body.emisor?.logo_blanco);
 
   if (String(body.condicionVenta) === '99') required('detalleCondicionVentaOtro', body.detalleCondicionVentaOtro);
   if (body.plazoCreditoDias !== undefined && body.plazoCreditoDias !== null && body.plazoCreditoDias !== '') {

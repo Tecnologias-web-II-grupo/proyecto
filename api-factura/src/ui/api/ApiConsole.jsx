@@ -12,7 +12,7 @@ const ENDPOINTS = [
   ['GET', '/api/facturas/:id', 'Devuelve la factura completa en JSON para otros servicios.'],
   ['GET', '/api/facturas', 'Lista facturas y permite filtrar por origen o referencia.'],
   ['GET', '/api/documentos/facturas/:id?formato=pdf&plantilla=auto', 'Genera el comprobante PDF de solo lectura.'],
-  ['PATCH', '/api/facturas/:id/logo', 'Carga o reemplaza el logo del emisor.'],
+  ['PATCH', '/api/facturas/:id/logo', 'Carga logo principal y/o variante blanca para encabezados oscuros.'],
   ['GET', '/api/contrato', 'Contrato técnico del servicio en JSON.'],
   ['GET', '/health', 'Estado general de la API.'],
   ['GET', '/health/documentos', 'Estado del generador PDF y Chromium.'],

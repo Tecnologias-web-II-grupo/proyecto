@@ -34,6 +34,9 @@ async function asegurarEsquemaCompartido() {
   if (!(await columnaExiste('emisor_logo'))) {
     await pool.query('ALTER TABLE facturas ADD COLUMN emisor_logo LONGTEXT NULL AFTER emisor_correo');
   }
+  if (!(await columnaExiste('emisor_logo_blanco'))) {
+    await pool.query('ALTER TABLE facturas ADD COLUMN emisor_logo_blanco LONGTEXT NULL AFTER emisor_logo');
+  }
   if (!(await columnaExiste('referencia_externa'))) {
     await pool.query('ALTER TABLE facturas ADD COLUMN referencia_externa VARCHAR(100) NULL AFTER total_comprobante');
   }
@@ -80,6 +83,9 @@ function serializarDatosExtendidos(body) {
       delete copia.emisor.logoUrl;
       delete copia.emisor.logo_url;
       delete copia.emisor.logo_data;
+      delete copia.emisor.logoUrlBlanco;
+      delete copia.emisor.logo_url_blanco;
+      delete copia.emisor.logo_blanco;
     }
     delete copia.id;
     return JSON.stringify(copia);
@@ -121,6 +127,7 @@ async function crearFactura(req, res) {
   }
 
   const logoEmisor = normalizarLogo(body.emisor?.logoUrl || body.emisor?.logo_data || null);
+  const logoBlancoEmisor = normalizarLogo(body.emisor?.logoUrlBlanco || body.emisor?.logo_blanco || null);
   const conn = await pool.getConnection();
   const lockName = origen && referenciaExterna
     ? `factura:${Buffer.from(`${origen}|${referenciaExterna}`).toString('base64url').slice(0, 54)}`
@@ -149,11 +156,11 @@ async function crearFactura(req, res) {
     await conn.execute(
       `INSERT INTO facturas (
         id, fecha_emision, moneda, condicion_venta, medio_pago,
-        emisor_nombre, emisor_tipo_id, emisor_numero_id, emisor_correo, emisor_logo,
+        emisor_nombre, emisor_tipo_id, emisor_numero_id, emisor_correo, emisor_logo, emisor_logo_blanco,
         receptor_nombre, receptor_tipo_id, receptor_numero_id, receptor_correo,
         total_gravado, total_exento, total_descuentos, total_impuesto, total_comprobante,
         referencia_externa, origen, datos_v44
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         new Date(body.fecha),
@@ -165,6 +172,7 @@ async function crearFactura(req, res) {
         encrypt(normalizarTexto(body.emisor.identificacion.numero, 40)),
         normalizarTexto(body.emisor.correo, 150).toLowerCase(),
         logoEmisor,
+        logoBlancoEmisor,
         normalizarTexto(body.receptor.nombre, 150),
         body.receptor.identificacion?.tipo ? normalizarTexto(body.receptor.identificacion.tipo, 2) : null,
         body.receptor.identificacion?.numero ? encrypt(normalizarTexto(body.receptor.identificacion.numero, 40)) : null,
@@ -230,10 +238,26 @@ async function actualizarLogoFactura(req, res) {
 
   try {
     await asegurarEsquemaCompartido();
-    const logoEmisor = normalizarLogo(req.body?.logoUrl ?? req.body?.logo_data ?? null);
-    const [result] = await pool.execute('UPDATE facturas SET emisor_logo = ? WHERE id = ?', [logoEmisor, id]);
+    const tienePrincipal = Object.prototype.hasOwnProperty.call(req.body || {}, 'logoUrl') || Object.prototype.hasOwnProperty.call(req.body || {}, 'logo_data');
+    const tieneBlanco = Object.prototype.hasOwnProperty.call(req.body || {}, 'logoUrlBlanco') || Object.prototype.hasOwnProperty.call(req.body || {}, 'logo_blanco');
+    if (!tienePrincipal && !tieneBlanco) {
+      return res.status(400).json({ error: 'No se recibió ningún logo', detalle: 'Envía logo y/o logoBlanco como archivo, o logoUrl/logoUrlBlanco como data URL.' });
+    }
+
+    const updates = [];
+    const values = [];
+    if (tienePrincipal) {
+      updates.push('emisor_logo = ?');
+      values.push(normalizarLogo(req.body?.logoUrl ?? req.body?.logo_data ?? null));
+    }
+    if (tieneBlanco) {
+      updates.push('emisor_logo_blanco = ?');
+      values.push(normalizarLogo(req.body?.logoUrlBlanco ?? req.body?.logo_blanco ?? null));
+    }
+    values.push(id);
+    const [result] = await pool.execute(`UPDATE facturas SET ${updates.join(', ')} WHERE id = ?`, values);
     if (!result.affectedRows) return res.status(404).json({ error: 'Factura no encontrada' });
-    return res.json({ id, logoActualizado: Boolean(logoEmisor) });
+    return res.json({ id, logoActualizado: tienePrincipal, logoBlancoActualizado: tieneBlanco });
   } catch (err) {
     console.error('[actualizarLogoFactura] error:', err.message);
     return res.status(400).json({ error: 'No se pudo actualizar el logo', detalle: err.message });
@@ -339,6 +363,7 @@ async function obtenerFacturaPorId(id) {
       identificacion: { ...(extEmisor.identificacion || {}), tipo: f.emisor_tipo_id, numero: decrypt(f.emisor_numero_id) },
       correo: f.emisor_correo,
       logoUrl: f.emisor_logo || null,
+      logoUrlBlanco: f.emisor_logo_blanco || null,
     },
     receptor: {
       ...extReceptor,

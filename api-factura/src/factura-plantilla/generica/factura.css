@@ -19,9 +19,11 @@ body{padding:0}
 /* Encabezado */
 .hero{display:flex;align-items:center;justify-content:space-between;gap:28px;padding:20px 24px;background:linear-gradient(115deg,var(--navy-deep),var(--navy));color:#fff}
 .brand{display:flex;align-items:center;gap:16px;min-width:0;flex:1}
-.logo{width:64px;height:64px;flex:0 0 64px;background:#fff;border-radius:13px;display:grid;place-items:center;overflow:hidden;box-shadow:0 2px 6px rgba(0,0,0,.08)}
-.logo img{max-width:56px;max-height:56px;object-fit:contain}
-.logo.fallback{font-size:22px;font-weight:900;color:var(--blue)}
+.logo{width:72px;height:54px;flex:0 0 72px;display:grid;place-items:center;overflow:hidden;background:transparent}
+.logo img{max-width:68px;max-height:48px;object-fit:contain}
+.logo.logo-on-dark img{filter:none}
+.logo.logo-standard img{filter:none}
+.logo.fallback{width:54px;flex-basis:54px;border:1px solid rgba(255,255,255,.28);border-radius:8px;font-size:18px;font-weight:900;color:#fff}
 .brand-copy{min-width:0}
 .overline{display:block;color:#72e1d9;font-size:8px;font-weight:900;letter-spacing:1.8px}
 .brand h1{margin:6px 0 5px;font-size:22px;line-height:1.08;overflow-wrap:break-word}
@@ -41,11 +43,13 @@ body{padding:0}
 .datum .label{display:block;margin-bottom:3px;color:#7d919f;font-size:6.7px}
 .datum strong{display:block;color:var(--ink);font-size:8.15px;line-height:1.28;overflow-wrap:anywhere;word-break:normal}
 
-.content{padding:16px 22px 14px}
+.content{padding:14px 22px 14px}
+.operation-overview{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:22px;align-items:center;padding:11px 0 12px;margin-bottom:13px;border-bottom:2px solid var(--line)}
+.operation-copy{min-width:0}.operation-label,.operation-total span{display:block;margin-bottom:3px;color:var(--muted);font-size:6.5px;font-weight:900;letter-spacing:1.1px}.operation-copy strong{display:block;color:var(--navy);font-size:14px;line-height:1.25}.operation-copy small{display:block;margin-top:3px;color:var(--muted);font-size:7px}.operation-total{text-align:right;padding-left:22px;border-left:1px solid var(--line)}.operation-total strong{display:block;color:var(--navy);font-size:18px;white-space:nowrap}
 .people{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.person-card{border:1px solid var(--line);border-radius:11px;padding:12px 14px;background:#fff;break-inside:avoid;page-break-inside:avoid}
-.person-card.issuer{border-top:3px solid var(--blue)}
-.person-card.client{border-top:3px solid var(--teal)}
+.person-card{border:0;border-top:2px solid var(--line);padding:10px 4px 8px;background:#fff;break-inside:avoid;page-break-inside:avoid}
+.person-card.issuer{border-top-color:var(--blue)}
+.person-card.client{border-top-color:var(--teal)}
 .section-title span{display:block;margin-bottom:2px;color:var(--teal);font-size:6.8px;font-weight:900;letter-spacing:1.5px}
 .section-title h2{margin:0 0 9px;padding-bottom:7px;border-bottom:1px solid #e5edf1;color:var(--navy);font-size:13px}
 .person-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px 14px}
@@ -65,15 +69,13 @@ body{padding:0}
 .items-table th:nth-child(3),.items-table td:nth-child(3){text-align:left}
 
 
-/* Información fiscal de líneas */
-.fiscal-details{display:grid;gap:7px;margin-top:8px}
-.line-extra{border:1px solid #e3edf1;border-left:3px solid var(--blue);border-radius:7px;background:#fbfdfe;padding:7px 10px;break-inside:avoid;page-break-inside:avoid}
-.line-extra h3{margin:0 0 6px;color:var(--navy);font-size:7.7px;font-weight:900}
-.grid.four{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px 12px}
-.line-extra .datum{padding:0 0 4px;background:transparent;border:0;border-bottom:1px solid #e8eff2;border-radius:0;text-align:left}
-.line-extra .datum .label{font-size:5.8px;margin-bottom:2px}
-.line-extra .datum strong{font-size:6.9px;line-height:1.2}
-.line-extra .small{margin:4px 0 0;padding-top:3px;border-top:0;color:#516d7e;font-size:6.25px;line-height:1.32;overflow-wrap:anywhere}
+/* Desglose fiscal compacto */
+.fiscal-details{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
+.fiscal-title{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:5px}.fiscal-title span{color:var(--teal);font-size:6.4px;font-weight:900;letter-spacing:1.2px}.fiscal-title strong{color:var(--navy);font-size:8px}
+.fiscal-table{width:100%;border-collapse:collapse;table-layout:fixed;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.fiscal-table th{padding:5px 4px;background:#f7fafb;color:#667f8e;font-size:5.8px;text-align:left;border-bottom:1px solid var(--line)}
+.fiscal-table td{padding:5px 4px;color:#385268;font-size:6.1px;line-height:1.25;border-top:1px solid #edf2f4;overflow-wrap:anywhere;vertical-align:top}
+.fiscal-table th:nth-child(1){width:6%}.fiscal-table th:nth-child(2){width:14%}.fiscal-table th:nth-child(3){width:8%}.fiscal-table th:nth-child(4){width:14%}.fiscal-table th:nth-child(5){width:23%}.fiscal-table th:nth-child(6){width:35%}
 
 /* Cierre del comprobante */
 .closing{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(300px,.92fr);gap:12px;margin-top:12px;align-items:start;break-inside:avoid;page-break-inside:avoid}
@@ -106,22 +108,22 @@ footer{display:flex;justify-content:space-between;gap:12px;padding:7px 22px;back
   body{padding:0}
   .invoice{max-width:none;box-shadow:none}
   .hero{padding:14px 17px}
-  .logo{width:49px;height:49px;flex-basis:49px;border-radius:10px}.logo img{max-width:42px;max-height:42px}
+  .logo{width:58px;height:42px;flex-basis:58px}.logo img{max-width:55px;max-height:38px}.logo.fallback{width:42px;flex-basis:42px;border-radius:7px}
   .brand{gap:12px}.overline{font-size:6.8px}.brand h1{font-size:16.5px;margin:4px 0}.brand p{font-size:7.7px}
   .number{min-width:175px;padding-left:16px}.number span{font-size:6.8px}.number strong{font-size:17px;margin:4px 0 6px}.number em{font-size:6.3px;padding:3px 7px}
   .meta{padding:6px 22px}.meta .datum{padding:1px 7px}.datum .label{font-size:5.6px}.datum strong{font-size:6.75px}
-  .content{padding:10px 22px 8px}.people{gap:9px}.person-card{padding:8px 10px;border-radius:8px}.section-title span{font-size:5.7px}.section-title h2{font-size:10.5px;margin-bottom:5px;padding-bottom:4px}.person-grid{gap:4px 8px}
+  .content{padding:9px 22px 8px}.operation-overview{padding:7px 0 8px;margin-bottom:8px}.operation-copy strong{font-size:11.5px}.operation-total strong{font-size:14px}.people{gap:12px}.person-card{padding:7px 3px 6px}.section-title span{font-size:5.7px}.section-title h2{font-size:10.5px;margin-bottom:5px;padding-bottom:4px}.person-grid{gap:4px 8px}
   .detail-block{margin-top:8px}.items-table th{padding:4px 3px;font-size:5.45px}.items-table td{padding:4px 3px;font-size:5.7px}
-  .fiscal-details{gap:5px;margin-top:5px}.line-extra{padding:5px 7px;border-radius:6px}.line-extra h3{font-size:6.6px;margin-bottom:4px}.grid.four{gap:3px 5px}.line-extra .datum{padding:0 0 3px}.line-extra .datum .label{font-size:4.9px}.line-extra .datum strong{font-size:5.8px}.line-extra .small{font-size:5.25px;margin-top:3px;padding-top:3px}
+  .fiscal-details{margin-top:6px;padding-top:5px}.fiscal-title{margin-bottom:3px}.fiscal-title span{font-size:5.3px}.fiscal-title strong{font-size:6.5px}.fiscal-table th{padding:3.5px 3px;font-size:4.8px}.fiscal-table td{padding:3.5px 3px;font-size:5.05px}
   .closing{gap:8px;margin-top:7px;grid-template-columns:minmax(0,1.05fr) minmax(278px,.95fr)}.closing-notes{padding:6px 0 0;border-radius:0}.closing-kicker{font-size:5.7px;margin-bottom:4px}.closing-meta{gap:3px 5px}.closing-meta span{padding:0 0 3px;font-size:5.3px}.closing-meta b{font-size:5.05px}.closing-extra{margin-top:4px;padding-top:4px}.closing-extra p{font-size:5.2px;margin-bottom:2px}
   .totals h3{padding:5px 7px;font-size:6.8px}.total-row{padding:2.6px 4.5px;font-size:5.25px}.total-row strong{font-size:5.25px}.grand{padding:5.5px 7px}.grand span{font-size:6.5px}.grand strong{font-size:8.7px}
   footer{padding:4px 22px;font-size:5.2px}
-  .hero,.meta,.person-card,.items-table tr,.line-extra,.closing,.totals{break-inside:avoid;page-break-inside:avoid}
+  .hero,.meta,.operation-overview,.person-card,.items-table tr,.fiscal-table tr,.closing,.totals{break-inside:avoid;page-break-inside:avoid}
   thead{display:table-header-group}
 }
 
 @media(max-width:760px){
   body{padding:0}.hero{flex-direction:column;align-items:flex-start}.number{border-left:0;border-top:1px solid rgba(255,255,255,.2);padding:12px 0 0;text-align:left}
-  .meta,.people,.closing,.person-grid,.closing-meta,.totals-grid,.grid.four{grid-template-columns:1fr}
+  .meta,.operation-overview,.people,.closing,.person-grid,.closing-meta,.totals-grid{grid-template-columns:1fr}
   .meta .datum{border-right:0;border-bottom:1px solid var(--line);padding:6px 0}.total-row:nth-child(odd){border-right:0}
 }

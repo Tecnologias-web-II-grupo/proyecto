@@ -10,8 +10,8 @@ const { calentarNavegador, obtenerEstadoBrowser, cerrarBrowser } = require('../d
 const { obtenerEstadoRenderer } = require('../document-renderer/pdfRenderer');
 
 const app = express();
-const API_VERSION = '2.3.0';
-const TEMPLATE_VERSION = 'factura-v44-react-pulida-final-v9';
+const API_VERSION = '2.4.0';
+const TEMPLATE_VERSION = 'factura-v44-react-final-v10';
 
 const allowedOrigins = new Set(
   (process.env.FRONTEND_URL || '')
@@ -69,7 +69,7 @@ const contrato = {
     listar: 'GET /api/facturas?origen=&referenciaExterna=&limit=&offset=',
     consultarJson: 'GET /api/facturas/:id',
     documentoPdf: 'GET /api/documentos/facturas/:id?formato=pdf&plantilla=auto|educontrol|generica',
-    actualizarLogo: 'PATCH /api/facturas/:id/logo (JSON data URL o multipart/form-data con archivo logo)',
+    actualizarLogo: 'PATCH /api/facturas/:id/logo (logo principal y/o logo blanco; JSON data URL o multipart/form-data)',
     health: 'GET /health',
     healthDocumentos: 'GET /health/documentos',
     contrato: 'GET /api/contrato',
@@ -77,7 +77,7 @@ const contrato = {
   interoperabilidad: {
     origen: 'Identificador opcional del sistema cliente, por ejemplo educontrol.',
     referenciaExterna: 'Referencia opcional e idempotente del cliente, por ejemplo cargo:42.',
-    logo: 'Opcional. Acepta emisor.logoUrl como data URL o archivo real mediante multipart/form-data (campo logo), PNG/JPG/WEBP hasta 500 KB.',
+    logo: 'Opcional. Admite dos variantes: emisor.logoUrl / archivo logo para fondos claros y emisor.logoUrlBlanco / archivo logoBlanco para el encabezado oscuro. PNG/JPG/WEBP, máximo 500 KB por variante.',
     plantillaPdf: 'auto usa EduControl cuando origen=educontrol; para otros sistemas usa la plantilla genérica. Ambas plantillas muestran los campos fiscales ampliados cuando se envían.',
     perfilV44Visual: 'En POST /api/facturas use perfilValidacion=v44-visual para exigir el conjunto ampliado de campos del comprobante visual. No genera XML ni firma digital.',
   },

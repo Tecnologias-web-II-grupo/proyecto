@@ -40,6 +40,9 @@ async function asegurarEsquemaCompartido() {
   if (!(await columnaExiste('origen'))) {
     await pool.query('ALTER TABLE facturas ADD COLUMN origen VARCHAR(80) NULL AFTER referencia_externa');
   }
+  if (!(await columnaExiste('datos_v44'))) {
+    await pool.query('ALTER TABLE facturas ADD COLUMN datos_v44 LONGTEXT NULL AFTER origen');
+  }
   if (!(await indiceExiste('idx_facturas_origen_referencia'))) {
     await pool.query('CREATE INDEX idx_facturas_origen_referencia ON facturas (origen, referencia_externa)');
   }
@@ -68,6 +71,26 @@ function origenFactura(body) {
 
 function referenciaFactura(body) {
   return normalizarTexto(body.referenciaExterna || body.referencia_externa || body.externalReference || '', 100) || null;
+}
+
+function serializarDatosExtendidos(body) {
+  try {
+    const copia = JSON.parse(JSON.stringify(body || {}));
+    if (copia.emisor) {
+      delete copia.emisor.logoUrl;
+      delete copia.emisor.logo_url;
+      delete copia.emisor.logo_data;
+    }
+    delete copia.id;
+    return JSON.stringify(copia);
+  } catch {
+    return null;
+  }
+}
+
+function parseDatosExtendidos(valor) {
+  if (!valor) return {};
+  try { return typeof valor === 'string' ? JSON.parse(valor) : valor; } catch { return {}; }
 }
 
 async function buscarPorReferencia(origen, referencia, connection = pool) {
@@ -129,8 +152,8 @@ async function crearFactura(req, res) {
         emisor_nombre, emisor_tipo_id, emisor_numero_id, emisor_correo, emisor_logo,
         receptor_nombre, receptor_tipo_id, receptor_numero_id, receptor_correo,
         total_gravado, total_exento, total_descuentos, total_impuesto, total_comprobante,
-        referencia_externa, origen
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        referencia_externa, origen, datos_v44
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         new Date(body.fecha),
@@ -153,6 +176,7 @@ async function crearFactura(req, res) {
         Number(body.totales.totalComprobante || 0),
         referenciaExterna,
         origen,
+        serializarDatosExtendidos(body),
       ]
     );
 
@@ -294,7 +318,14 @@ async function obtenerFacturaPorId(id) {
     [id]
   );
 
+  const ext = parseDatosExtendidos(f.datos_v44);
+  const extItems = Array.isArray(ext.items) ? ext.items : [];
+  const extEmisor = ext.emisor && typeof ext.emisor === 'object' ? ext.emisor : {};
+  const extReceptor = ext.receptor && typeof ext.receptor === 'object' ? ext.receptor : {};
+  const extTotales = ext.totales && typeof ext.totales === 'object' ? ext.totales : {};
+
   return {
+    ...ext,
     id: f.id,
     fecha: new Date(f.fecha_emision).toISOString(),
     moneda: f.moneda,
@@ -303,29 +334,33 @@ async function obtenerFacturaPorId(id) {
     origen: f.origen || null,
     referenciaExterna: f.referencia_externa || null,
     emisor: {
+      ...extEmisor,
       nombre: f.emisor_nombre,
-      identificacion: { tipo: f.emisor_tipo_id, numero: decrypt(f.emisor_numero_id) },
+      identificacion: { ...(extEmisor.identificacion || {}), tipo: f.emisor_tipo_id, numero: decrypt(f.emisor_numero_id) },
       correo: f.emisor_correo,
       logoUrl: f.emisor_logo || null,
     },
     receptor: {
+      ...extReceptor,
       nombre: f.receptor_nombre,
       identificacion: f.receptor_numero_id
-        ? { tipo: f.receptor_tipo_id, numero: decrypt(f.receptor_numero_id) }
-        : null,
+        ? { ...(extReceptor.identificacion || {}), tipo: f.receptor_tipo_id, numero: decrypt(f.receptor_numero_id) }
+        : (extReceptor.identificacion || null),
       correo: f.receptor_correo,
     },
-    items: itemRows.map((it) => ({
+    items: itemRows.map((it, index) => ({
+      ...(extItems[index] || {}),
       numeroLinea: it.numero_linea,
       detalle: it.detalle,
       cantidad: Number(it.cantidad),
       precioUnitario: Number(it.precio_unitario),
       descuento: Number(it.descuento),
-      impuesto: { tarifa: Number(it.impuesto_tarifa) },
+      impuesto: { ...((extItems[index] || {}).impuesto || {}), tarifa: Number(it.impuesto_tarifa) },
       subtotal: Number(it.subtotal),
       montoTotalLinea: Number(it.monto_total_linea),
     })),
     totales: {
+      ...extTotales,
       totalGravado: Number(f.total_gravado),
       totalExento: Number(f.total_exento),
       totalDescuentos: Number(f.total_descuentos),

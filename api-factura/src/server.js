@@ -8,8 +8,8 @@ const { calentarNavegador, obtenerEstadoBrowser, cerrarBrowser } = require('../d
 const { obtenerEstadoRenderer } = require('../document-renderer/pdfRenderer');
 
 const app = express();
-const API_VERSION = '1.6.0';
-const TEMPLATE_VERSION = 'dual-educontrol-generica-v1';
+const API_VERSION = '1.7.0';
+const TEMPLATE_VERSION = 'factura-v44-visual-completa-v1';
 
 const allowedOrigins = new Set(
   (process.env.FRONTEND_URL || '')
@@ -61,7 +61,7 @@ const contrato = {
   servicio: 'API compartida de facturación al cliente',
   version: API_VERSION,
   templateVersion: TEMPLATE_VERSION,
-  descripcion: 'Registra y consulta facturas y genera un comprobante PDF visual de solo lectura.',
+  descripcion: 'Registra y consulta facturas y genera un comprobante PDF visual de solo lectura, con perfil opcional v44-visual para validar y mostrar información fiscal ampliada.',
   endpoints: {
     crear: 'POST /api/facturas',
     listar: 'GET /api/facturas?origen=&referenciaExterna=&limit=&offset=',
@@ -76,7 +76,8 @@ const contrato = {
     origen: 'Identificador opcional del sistema cliente, por ejemplo educontrol.',
     referenciaExterna: 'Referencia opcional e idempotente del cliente, por ejemplo cargo:42.',
     logo: 'Opcional. Acepta emisor.logoUrl como data URL o archivo real mediante multipart/form-data (campo logo), PNG/JPG/WEBP hasta 500 KB.',
-    plantillaPdf: 'auto usa EduControl cuando origen=educontrol; para otros sistemas usa la plantilla genérica. También puede forzarse con plantilla=educontrol o plantilla=generica.',
+    plantillaPdf: 'auto usa EduControl cuando origen=educontrol; para otros sistemas usa la plantilla genérica. Ambas plantillas muestran los campos fiscales ampliados cuando se envían.',
+    perfilV44Visual: 'En POST /api/facturas use perfilValidacion=v44-visual para exigir el conjunto ampliado de campos del comprobante visual. No genera XML ni firma digital.',
   },
 };
 

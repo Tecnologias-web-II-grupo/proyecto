@@ -1,7 +1,7 @@
 {
   "name": "api-factura",
-  "version": "1.6.0",
-  "description": "API REST compartida y optimizada para registrar, consultar y generar facturas visuales en PDF de solo lectura",
+  "version": "1.7.0",
+  "description": "API REST compartida para facturación al cliente con PDF visual de solo lectura y perfil de datos ampliado v44-visual",
   "main": "src/server.js",
   "scripts": {
     "test": "node --test --experimental-test-isolation=none",

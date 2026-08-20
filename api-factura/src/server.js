@@ -8,8 +8,8 @@ const { calentarNavegador, obtenerEstadoBrowser, cerrarBrowser } = require('../d
 const { obtenerEstadoRenderer } = require('../document-renderer/pdfRenderer');
 
 const app = express();
-const API_VERSION = '1.3.0';
-const TEMPLATE_VERSION = 'factura-compartida-v2';
+const API_VERSION = '1.4.0';
+const TEMPLATE_VERSION = 'factura-formal-v3';
 
 const allowedOrigins = new Set(
   (process.env.FRONTEND_URL || '')

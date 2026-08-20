@@ -9,7 +9,7 @@ const { obtenerEstadoRenderer } = require('../document-renderer/pdfRenderer');
 
 const app = express();
 const API_VERSION = '1.7.0';
-const TEMPLATE_VERSION = 'factura-v44-visual-ordenada-v2';
+const TEMPLATE_VERSION = 'factura-v44-visual-completa-v1';
 
 const allowedOrigins = new Set(
   (process.env.FRONTEND_URL || '')

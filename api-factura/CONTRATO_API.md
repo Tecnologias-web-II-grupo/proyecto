@@ -78,3 +78,15 @@ Ejemplos:
 - Otro proyecto puede usar `origen: "tienda-grupo-4"`, `referenciaExterna: "venta:903"` sin mezclarse con EduControl.
 
 Esto permite que un mismo cliente/persona tenga tantas facturas como operaciones distintas haya pagado, manteniendo cada comprobante consultable de forma independiente.
+
+## Plantillas PDF (v1.5.0)
+
+`GET /api/documentos/facturas/:id?formato=pdf&plantilla=auto`
+
+Valores de `plantilla`:
+
+- `auto`: EduControl si `origen=educontrol`; genérica para cualquier otro sistema.
+- `educontrol`: fuerza la presentación de EduControl.
+- `generica`: fuerza la presentación universal basada únicamente en los datos JSON.
+
+La selección de plantilla no cambia los datos almacenados ni el contrato JSON.

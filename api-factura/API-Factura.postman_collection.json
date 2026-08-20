@@ -1,0 +1,54 @@
+{
+  "info": {
+    "name": "API Factura al Cliente",
+    "description": "Pruebas de creación, consulta JSON, PDF y logo. No incluye factura electrónica.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://proyecto-kn7p.onrender.com" },
+    { "key": "facturaId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1 - Health",
+      "request": { "method": "GET", "url": "{{baseUrl}}/health" }
+    },
+    {
+      "name": "2 - Crear factura genérica",
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "if (pm.response.code === 200 || pm.response.code === 201) {",
+          "  const data = pm.response.json();",
+          "  if (data.id) pm.collectionVariables.set('facturaId', data.id);",
+          "}"
+        ] }
+      }],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"origen\": \"postman-demo\",\n  \"referenciaExterna\": \"venta:{{$timestamp}}\",\n  \"fecha\": \"2026-08-20T10:00:00-06:00\",\n  \"moneda\": \"CRC\",\n  \"condicionVenta\": \"01\",\n  \"medioPago\": \"01\",\n  \"emisor\": {\n    \"nombre\": \"Negocio Demo Postman\",\n    \"identificacion\": { \"tipo\": \"02\", \"numero\": \"3-101-123456\" },\n    \"correo\": \"ventas@negociodemo.com\",\n    \"logoUrl\": null\n  },\n  \"receptor\": {\n    \"nombre\": \"Cliente de Prueba\",\n    \"identificacion\": { \"tipo\": \"01\", \"numero\": \"112233445\" },\n    \"correo\": \"cliente@correo.com\"\n  },\n  \"items\": [{\n    \"numeroLinea\": 1, \"detalle\": \"Servicio de prueba\", \"cantidad\": 1,\n    \"precioUnitario\": 25000, \"descuento\": 0, \"impuesto\": { \"tarifa\": 0 },\n    \"subtotal\": 25000, \"montoTotalLinea\": 25000\n  }],\n  \"totales\": {\n    \"totalGravado\": 0, \"totalExento\": 25000, \"totalDescuentos\": 0,\n    \"totalImpuesto\": 0, \"totalComprobante\": 25000\n  }\n}"
+        },
+        "url": "{{baseUrl}}/api/facturas"
+      }
+    },
+    {
+      "name": "3 - Obtener factura JSON",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/facturas/{{facturaId}}" }
+    },
+    {
+      "name": "4 - PDF automático",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/documentos/facturas/{{facturaId}}?formato=pdf&plantilla=auto" }
+    },
+    {
+      "name": "5 - PDF genérico",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/documentos/facturas/{{facturaId}}?formato=pdf&plantilla=generica" }
+    },
+    {
+      "name": "6 - PDF EduControl",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/documentos/facturas/{{facturaId}}?formato=pdf&plantilla=educontrol" }
+    }
+  ]
+}

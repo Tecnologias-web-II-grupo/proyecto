@@ -1,7 +1,7 @@
 {
   "name": "api-factura",
-  "version": "1.7.2",
-  "description": "API REST compartida para facturación al cliente con PDF visual de solo lectura y perfil de datos ampliado v44-visual",
+  "version": "2.1.0",
+  "description": "API REST compartida de facturación al cliente con interfaz React SSR organizada por componentes JSX y generación PDF de solo lectura.",
   "main": "src/server.js",
   "scripts": {
     "test": "node --test --experimental-test-isolation=none",

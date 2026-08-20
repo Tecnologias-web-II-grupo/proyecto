@@ -1,10 +1,11 @@
+require('../src/react/registerJsx');
 const fs = require('fs/promises');
 const path = require('path');
 const React = require('react');
 const { renderToStaticMarkup } = require('react-dom/server');
 const { RendererError } = require('./errors');
-const { FacturaDocument: FacturaGenerica } = require('../src/factura-plantilla/generica/factura');
-const { FacturaDocument: FacturaEduControl } = require('../src/factura-plantilla/educontrol/factura');
+const { FacturaDocument: FacturaGenerica } = require('../src/factura-plantilla/generica/FacturaDocument.jsx');
+const { FacturaDocument: FacturaEduControl } = require('../src/factura-plantilla/educontrol/FacturaDocument.jsx');
 
 const plantillas = {
   generica: {

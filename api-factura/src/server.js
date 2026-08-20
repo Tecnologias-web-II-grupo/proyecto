@@ -8,8 +8,8 @@ const { calentarNavegador, obtenerEstadoBrowser, cerrarBrowser } = require('../d
 const { obtenerEstadoRenderer } = require('../document-renderer/pdfRenderer');
 
 const app = express();
-const API_VERSION = '1.7.0';
-const TEMPLATE_VERSION = 'factura-v44-visual-completa-v1';
+const API_VERSION = '1.7.1';
+const TEMPLATE_VERSION = 'factura-v44-visual-pulida-v2';
 
 const allowedOrigins = new Set(
   (process.env.FRONTEND_URL || '')

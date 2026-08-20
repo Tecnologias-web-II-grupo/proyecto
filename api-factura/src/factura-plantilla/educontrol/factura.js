@@ -92,24 +92,46 @@ function Items({f}) {
     })
   );
 }
+function obtenerOtros(f) {
+  const raw=f?.otros;
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.filter(Boolean).map((o)=>typeof o==='string'?o:(o.texto||o.contenido||o.observaciones||o.informacionAdicional||JSON.stringify(o)));
+  if (typeof raw === 'object') {
+    const out=[];
+    if (raw.observaciones) out.push(`Observaciones: ${raw.observaciones}`);
+    if (raw.informacionAdicional) out.push(`Información adicional: ${raw.informacionAdicional}`);
+    if (raw.texto) out.push(raw.texto);
+    return out;
+  }
+  return [String(raw)];
+}
 function Summary({f}) {
   const t=f.totales||{};
   const rows=[
     ['Servicios gravados',t.totalServiciosGravados??t.totalServGravados],['Servicios exentos',t.totalServiciosExentos??t.totalServExentos],
-    ['Mercancías gravadas',t.totalMercanciasGravadas],['Mercancías exentas',t.totalMercanciasExentas],
+    ['Servicios exonerados',t.totalServiciosExonerados??t.totalServExonerados],['Servicios no sujetos',t.totalServiciosNoSujetos??t.totalServNoSujetos],
+    ['Mercancías gravadas',t.totalMercanciasGravadas],['Mercancías exentas',t.totalMercanciasExentas],['Mercancías exoneradas',t.totalMercanciasExoneradas],['Mercancías no sujetas',t.totalMercanciasNoSujetas],
     ['Total gravado',t.totalGravado],['Total exento',t.totalExento],['Total exonerado',t.totalExonerado],['Total no sujeto',t.totalNoSujeto],
-    ['Total venta',t.totalVenta],['Descuentos',t.totalDescuentos],['Venta neta',t.totalVentaNeta],['Impuestos',t.totalImpuesto],['Otros cargos',t.totalOtrosCargos]
-  ].filter(([,v])=>v!==undefined&&v!==null&&Number(v)!==0);
+    ['Total venta',t.totalVenta],['Descuentos',t.totalDescuentos],['Venta neta',t.totalVentaNeta],['Impuestos',t.totalImpuesto],['IVA devuelto',t.totalIVADevuelto],['Otros cargos',t.totalOtrosCargos]
+  ].filter(([,v])=>v!==undefined&&v!==null&&Math.abs(Number(v)||0)>0.000001);
   const medios=Array.isArray(t.mediosPago)?t.mediosPago:[];
-  return React.createElement('section',{className:'summary'},
-    React.createElement('div',{className:'summary-info'},
-      React.createElement('div',{className:'summary-info-title'},'Información del comprobante'),
-      React.createElement('div',{className:'summary-info-grid'},
-        f.perfilValidacion?React.createElement(D,{l:'Perfil de validación',v:f.perfilValidacion}):null,
-        f.detalleCondicionVenta||f.detalleCondicionVentaOtro?React.createElement(D,{l:'Detalle condición',v:f.detalleCondicionVenta||f.detalleCondicionVentaOtro}):null,
-        medios.length?React.createElement(D,{l:'Medio(s) de pago',v:medios.map(m=>`${cod(MP,m.tipo)} · ${dinero(m.total??m.monto,f.moneda)}`).join(' | ')}):null,
-        React.createElement(D,{l:'Formato',v:'PDF de solo lectura'})
-      )
+  const refs=Array.isArray(f.referencias)?f.referencias:[];
+  const cargos=Array.isArray(f.otrosCargos)?f.otrosCargos:[];
+  const otros=obtenerOtros(f);
+  return React.createElement('section',{className:'closing'},
+    React.createElement('div',{className:'closing-notes'},
+      React.createElement('div',{className:'closing-kicker'},'DATOS DEL COMPROBANTE'),
+      React.createElement('div',{className:'closing-meta'},
+        f.perfilValidacion?React.createElement('span',null,React.createElement('b',null,'Perfil'),texto(f.perfilValidacion)):null,
+        React.createElement('span',null,React.createElement('b',null,'Factura'),texto(f.id,'—')),
+        medios.length?React.createElement('span',null,React.createElement('b',null,'Pago'),medios.map(m=>`${cod(MP,m.tipo)} · ${dinero(m.total??m.monto,f.moneda)}`).join(' | ')):null,
+        React.createElement('span',null,React.createElement('b',null,'Formato'),'PDF de solo lectura')
+      ),
+      (otros.length||refs.length||cargos.length)?React.createElement('div',{className:'closing-extra'},
+        otros.map((o,i)=>React.createElement('p',{key:`o${i}`},o)),
+        cargos.map((c,i)=>React.createElement('p',{key:`c${i}`},`Cargo adicional: ${c.detalle||c.tipoDocumento||'Cargo'} · ${dinero(c.monto,f.moneda)}`)),
+        refs.map((r,i)=>React.createElement('p',{key:`r${i}`},`Referencia: ${r.tipoDocumento||'—'} · ${r.numero||r.numeroDocumento||'—'} · ${fecha(r.fechaEmision)}${r.razon?` · ${r.razon}`:''}`))
+      ):React.createElement('p',{className:'closing-help'},'Comprobante generado por el servicio de facturación con los datos suministrados por el sistema emisor.')
     ),
     React.createElement('div',{className:'totals'},React.createElement('h3',null,'Resumen de importes'),
       ...rows.map(([l,v])=>React.createElement('div',{className:'total-row',key:l},React.createElement('span',null,l),React.createElement('strong',null,dinero(v,f.moneda)))),
@@ -117,18 +139,7 @@ function Summary({f}) {
     )
   );
 }
-function Extras({f}) {
-  const refs=Array.isArray(f.referencias)?f.referencias:[];
-  const cargos=Array.isArray(f.otrosCargos)?f.otrosCargos:[];
-  const otros=Array.isArray(f.otros)?f.otros:[];
-  if(!refs.length&&!cargos.length&&!otros.length)return null;
-  return React.createElement('section',{className:'block extras-compact'},
-    React.createElement(SectionTitle,{kicker:'DATOS ADICIONALES',title:'Información complementaria'}),
-    cargos.length?React.createElement('div',{className:'compact-list'},React.createElement('b',null,'Otros cargos'),...cargos.map((c,i)=>React.createElement('span',{key:i},`${c.detalle||c.tipoDocumento||'Cargo'} · ${dinero(c.monto,f.moneda)}`))):null,
-    refs.length?React.createElement('div',{className:'compact-list'},React.createElement('b',null,'Referencias'),...refs.map((r,i)=>React.createElement('span',{key:i},`${r.tipoDocumento||'—'} · ${r.numero||r.numeroDocumento||'—'} · ${fecha(r.fechaEmision)} · ${r.razon||''}`))):null,
-    otros.length?React.createElement('div',{className:'compact-list'},React.createElement('b',null,'Otros datos'),...otros.map((o,i)=>React.createElement('span',{key:i},typeof o==='string'?o:(o.texto||o.contenido||JSON.stringify(o))))):null
-  );
-}
+function Extras(){ return null; }
 function FacturaDocument({factura:f}) { return React.createElement('main',{className:'invoice'},React.createElement(Header,{f}),React.createElement('div',{className:'content'},React.createElement('div',{className:'people'},React.createElement(Person,{title:'Datos del emisor',p:f.emisor,side:'issuer'}),React.createElement(Person,{title:'Datos del cliente',p:f.receptor,side:'client'})),React.createElement(Items,{f}),React.createElement(Summary,{f}),React.createElement(Extras,{f})),React.createElement('footer',null,React.createElement('span',null,texto(f.emisor?.nombre,'Emisor')),React.createElement('span',{className:'mono'},texto(f.id,'')),React.createElement('span',null,'Comprobante PDF de solo lectura'))); }
 
 module.exports={FacturaDocument,formatoMoneda:dinero,formatearFecha:fecha};

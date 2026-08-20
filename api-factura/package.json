@@ -1,6 +1,6 @@
 {
   "name": "api-factura",
-  "version": "1.4.1",
+  "version": "1.6.0",
   "description": "API REST compartida y optimizada para registrar, consultar y generar facturas visuales en PDF de solo lectura",
   "main": "src/server.js",
   "scripts": {
@@ -20,7 +20,8 @@
     "mysql2": "^3.23.2",
     "puppeteer": "^25.7.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "multer": "^2.0.2"
   },
   "engines": {
     "node": ">=22.12.0"

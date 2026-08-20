@@ -1,0 +1,8 @@
+PATCH https://proyecto-kn7p.onrender.com/api/facturas/F-XXXXXXXX/logo
+Body -> form-data
+
+KEY   TYPE   VALUE
+logo  File   [seleccionar logo.png / logo.jpg / logo.webp]
+
+Máximo: 500 KB.
+No agregue Content-Type manualmente; Postman lo configura con multipart boundary.

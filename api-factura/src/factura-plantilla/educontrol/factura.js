@@ -20,6 +20,7 @@ const ID = { '01':'Persona física','02':'Persona jurídica','03':'DIMEX','04':'
 const CV = { '01':'Contado','02':'Crédito','03':'Consignación','04':'Apartado','05':'Arrendamiento con opción de compra','06':'Arrendamiento financiero','07':'Cobro a favor de tercero','08':'Servicios al Estado a crédito','09':'Servicios al Estado de contado','10':'Venta a crédito IVA hasta 90 días','11':'Pago de venta a crédito IVA hasta 90 días','12':'Mercancía no nacionalizada','13':'Bienes usados no contribuyente','14':'Arrendamiento operativo','15':'Arrendamiento financiero','99':'Otros' };
 const MP = { '01':'Efectivo','02':'Tarjeta','03':'Cheque','04':'Transferencia/depósito','05':'Recaudado por terceros','06':'SINPE Móvil','07':'Plataforma digital','99':'Otros' };
 function cod(map, v) { const k=texto(v,''); return map[k] ? `${map[k]} · ${k}` : texto(v); }
+function proveedorTexto(v){ if(!v) return null; if(typeof v==='string') return v; const nombre=v.nombre||v.razonSocial||v.proveedor||''; const id=v.identificacion?.numero||v.identificacion||v.numeroIdentificacion||''; return [nombre,id&&`ID ${id}`].filter(Boolean).join(' · ') || null; }
 
 function D({l,v,mono=false}) { return React.createElement('div',{className:'datum'},React.createElement('span',{className:'label'},l),React.createElement('strong',{className:mono?'mono':''},texto(v))); }
 function SectionTitle({kicker,title}) { return React.createElement('div',{className:'section-title'},React.createElement('span',null,kicker),React.createElement('h2',null,title)); }
@@ -51,8 +52,8 @@ function Header({f}) {
     React.createElement('section',{className:'meta'},
       React.createElement(D,{l:'Fecha de emisión',v:fecha(f.fecha)}),React.createElement(D,{l:'Moneda',v:f.moneda}),
       React.createElement(D,{l:'Condición de venta',v:cod(CV,f.condicionVenta)}),React.createElement(D,{l:'Medio de pago',v:cod(MP,f.medioPago)}),
-      f.plazoCreditoDias!==undefined&&f.plazoCreditoDias!==null?React.createElement(D,{l:'Plazo de crédito',v:`${f.plazoCreditoDias} días`}):null,
-      f.proveedorSistemas?React.createElement(D,{l:'Proveedor de sistemas',v:(typeof f.proveedorSistemas==='object'?(f.proveedorSistemas.nombre||f.proveedorSistemas.identificacion||'No indicado'):f.proveedorSistemas)}):null,
+      (f.plazoCreditoDias??f.plazoCredito)!==undefined&&(f.plazoCreditoDias??f.plazoCredito)!==null?React.createElement(D,{l:'Plazo de crédito',v:`${f.plazoCreditoDias??f.plazoCredito} días`}):null,
+      f.proveedorSistemas?React.createElement(D,{l:'Proveedor de sistemas',v:proveedorTexto(f.proveedorSistemas)}):null,
       f.totales?.tipoCambio!==undefined?React.createElement(D,{l:'Tipo de cambio',v:f.totales.tipoCambio}):null
     )
   );
@@ -94,29 +95,40 @@ function Items({f}) {
 function Summary({f}) {
   const t=f.totales||{};
   const rows=[
-    ['Servicios gravados',t.totalServiciosGravados],['Servicios exentos',t.totalServiciosExentos],['Servicios exonerados',t.totalServiciosExonerados],['Servicios no sujetos',t.totalServiciosNoSujetos],
-    ['Mercancías gravadas',t.totalMercanciasGravadas],['Mercancías exentas',t.totalMercanciasExentas],['Mercancías exoneradas',t.totalMercanciasExoneradas],['Mercancías no sujetas',t.totalMercanciasNoSujetas],
-    ['Total gravado',t.totalGravado],['Total exento',t.totalExento],['Total exonerado',t.totalExonerado],['Total no sujeto',t.totalNoSujeto],['Total venta',t.totalVenta],['Descuentos',t.totalDescuentos],['Venta neta',t.totalVentaNeta],['Impuestos',t.totalImpuesto],['IVA devuelto',t.totalIVADevuelto],['Otros cargos',t.totalOtrosCargos]
-  ].filter(([,v])=>v!==undefined&&v!==null);
+    ['Servicios gravados',t.totalServiciosGravados??t.totalServGravados],['Servicios exentos',t.totalServiciosExentos??t.totalServExentos],
+    ['Mercancías gravadas',t.totalMercanciasGravadas],['Mercancías exentas',t.totalMercanciasExentas],
+    ['Total gravado',t.totalGravado],['Total exento',t.totalExento],['Total exonerado',t.totalExonerado],['Total no sujeto',t.totalNoSujeto],
+    ['Total venta',t.totalVenta],['Descuentos',t.totalDescuentos],['Venta neta',t.totalVentaNeta],['Impuestos',t.totalImpuesto],['Otros cargos',t.totalOtrosCargos]
+  ].filter(([,v])=>v!==undefined&&v!==null&&Number(v)!==0);
+  const medios=Array.isArray(t.mediosPago)?t.mediosPago:[];
   return React.createElement('section',{className:'summary'},
-    React.createElement('div',{className:'note'},React.createElement(SectionTitle,{kicker:'INFORMACIÓN DEL DOCUMENTO',title:'Comprobante para el cliente'}),
-      React.createElement('p',null,'Documento generado por el servicio de facturación en formato PDF de solo lectura. Incluye la información fiscal suministrada por el sistema emisor para su representación visual.'),
-      f.perfilValidacion?React.createElement('span',{className:'pill'},`Perfil: ${f.perfilValidacion}`):null,
-      f.detalleCondicionVentaOtro?React.createElement('p',{className:'small'},`Detalle condición de venta: ${f.detalleCondicionVentaOtro}`):null),
-    React.createElement('div',{className:'totals'},React.createElement('h3',null,'Resumen de importes'),...rows.map(([l,v])=>React.createElement('div',{className:'total-row',key:l},React.createElement('span',null,l),React.createElement('strong',null,dinero(v,f.moneda)))),React.createElement('div',{className:'grand'},React.createElement('span',null,'TOTAL COMPROBANTE'),React.createElement('strong',null,dinero(t.totalComprobante,f.moneda))))
+    React.createElement('div',{className:'summary-info'},
+      React.createElement('div',{className:'summary-info-title'},'Información del comprobante'),
+      React.createElement('div',{className:'summary-info-grid'},
+        f.perfilValidacion?React.createElement(D,{l:'Perfil de validación',v:f.perfilValidacion}):null,
+        f.detalleCondicionVenta||f.detalleCondicionVentaOtro?React.createElement(D,{l:'Detalle condición',v:f.detalleCondicionVenta||f.detalleCondicionVentaOtro}):null,
+        medios.length?React.createElement(D,{l:'Medio(s) de pago',v:medios.map(m=>`${cod(MP,m.tipo)} · ${dinero(m.total??m.monto,f.moneda)}`).join(' | ')}):null,
+        React.createElement(D,{l:'Formato',v:'PDF de solo lectura'})
+      )
+    ),
+    React.createElement('div',{className:'totals'},React.createElement('h3',null,'Resumen de importes'),
+      ...rows.map(([l,v])=>React.createElement('div',{className:'total-row',key:l},React.createElement('span',null,l),React.createElement('strong',null,dinero(v,f.moneda)))),
+      React.createElement('div',{className:'grand'},React.createElement('span',null,'TOTAL COMPROBANTE'),React.createElement('strong',null,dinero(t.totalComprobante,f.moneda)))
+    )
   );
 }
 function Extras({f}) {
-  const medios=f.totales?.mediosPago||[], refs=f.referencias||[], cargos=f.otrosCargos||[], otros=f.otros||[];
-  if(!medios.length&&!refs.length&&!cargos.length&&!otros.length)return null;
-  return React.createElement('section',{className:'block page-break-avoid'},
-    React.createElement(SectionTitle,{kicker:'INFORMACIÓN COMPLEMENTARIA',title:'Datos adicionales del comprobante'}),
-    medios.length?React.createElement('div',{className:'extra-card'},React.createElement('h3',null,'Desglose de medios de pago'),...medios.map((m,i)=>React.createElement('p',{key:i},`${cod(MP,m.tipo)} · ${dinero(m.total,f.moneda)}${m.detalleOtro?` · ${m.detalleOtro}`:''}`))):null,
-    cargos.length?React.createElement('div',{className:'extra-card'},React.createElement('h3',null,'Otros cargos'),...cargos.map((c,i)=>React.createElement('p',{key:i},`${c.tipoDocumento||'—'}${c.tipoDocumentoOtro?` / ${c.tipoDocumentoOtro}`:''} · ${c.detalle||''} · ${c.porcentaje!==undefined?`${c.porcentaje}% · `:''}${dinero(c.monto,f.moneda)}${c.tercero?.identificacion?.numero?` · Tercero ${c.tercero.identificacion.numero}`:''}`))):null,
-    refs.length?React.createElement('div',{className:'extra-card'},React.createElement('h3',null,'Información de referencia'),...refs.map((r,i)=>React.createElement('p',{key:i},`${r.tipoDocumento||'—'} · ${r.numero||'—'} · ${fecha(r.fechaEmision)} · código ${r.codigo||'—'} · ${r.razon||''}`))):null,
-    otros.length?React.createElement('div',{className:'extra-card'},React.createElement('h3',null,'Otros datos'),...otros.map((o,i)=>React.createElement('p',{key:i},typeof o==='string'?o:(o.texto||o.contenido||JSON.stringify(o))))):null
+  const refs=Array.isArray(f.referencias)?f.referencias:[];
+  const cargos=Array.isArray(f.otrosCargos)?f.otrosCargos:[];
+  const otros=Array.isArray(f.otros)?f.otros:[];
+  if(!refs.length&&!cargos.length&&!otros.length)return null;
+  return React.createElement('section',{className:'block extras-compact'},
+    React.createElement(SectionTitle,{kicker:'DATOS ADICIONALES',title:'Información complementaria'}),
+    cargos.length?React.createElement('div',{className:'compact-list'},React.createElement('b',null,'Otros cargos'),...cargos.map((c,i)=>React.createElement('span',{key:i},`${c.detalle||c.tipoDocumento||'Cargo'} · ${dinero(c.monto,f.moneda)}`))):null,
+    refs.length?React.createElement('div',{className:'compact-list'},React.createElement('b',null,'Referencias'),...refs.map((r,i)=>React.createElement('span',{key:i},`${r.tipoDocumento||'—'} · ${r.numero||r.numeroDocumento||'—'} · ${fecha(r.fechaEmision)} · ${r.razon||''}`))):null,
+    otros.length?React.createElement('div',{className:'compact-list'},React.createElement('b',null,'Otros datos'),...otros.map((o,i)=>React.createElement('span',{key:i},typeof o==='string'?o:(o.texto||o.contenido||JSON.stringify(o))))):null
   );
 }
-function FacturaDocument({factura:f}) { return React.createElement('main',{className:'invoice'},React.createElement(Header,{f}),React.createElement('div',{className:'content'},React.createElement('div',{className:'people'},React.createElement(Person,{title:'Datos del emisor',p:f.emisor,side:'issuer'}),React.createElement(Person,{title:'Datos del cliente',p:f.receptor,side:'client'})),React.createElement(Items,{f}),React.createElement(Extras,{f}),React.createElement(Summary,{f})),React.createElement('footer',null,React.createElement('span',null,texto(f.emisor?.nombre,'Emisor')),React.createElement('span',{className:'mono'},texto(f.id,'')),React.createElement('span',null,'Comprobante PDF de solo lectura'))); }
+function FacturaDocument({factura:f}) { return React.createElement('main',{className:'invoice'},React.createElement(Header,{f}),React.createElement('div',{className:'content'},React.createElement('div',{className:'people'},React.createElement(Person,{title:'Datos del emisor',p:f.emisor,side:'issuer'}),React.createElement(Person,{title:'Datos del cliente',p:f.receptor,side:'client'})),React.createElement(Items,{f}),React.createElement(Summary,{f}),React.createElement(Extras,{f})),React.createElement('footer',null,React.createElement('span',null,texto(f.emisor?.nombre,'Emisor')),React.createElement('span',{className:'mono'},texto(f.id,'')),React.createElement('span',null,'Comprobante PDF de solo lectura'))); }
 
 module.exports={FacturaDocument,formatoMoneda:dinero,formatearFecha:fecha};

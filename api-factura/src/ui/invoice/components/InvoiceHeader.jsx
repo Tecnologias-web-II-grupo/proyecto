@@ -4,11 +4,14 @@ const { texto, fecha, iniciales, codigo, CONDICIONES, PAGOS, proveedorTexto } = 
 
 function InvoiceHeader({ factura }) {
   const emisor = factura.emisor || {};
+  const logoHeader = emisor.logoUrlBlanco || emisor.logoUrl || null;
+  const logoVariant = emisor.logoUrlBlanco ? 'logo logo-on-dark' : 'logo logo-standard';
+
   return React.createElement(React.Fragment, null,
     React.createElement('header', { className: 'hero' },
       React.createElement('div', { className: 'brand' },
-        emisor.logoUrl
-          ? React.createElement('div', { className: 'logo' }, React.createElement('img', { src: emisor.logoUrl, alt: 'Logo del emisor' }))
+        logoHeader
+          ? React.createElement('div', { className: logoVariant }, React.createElement('img', { src: logoHeader, alt: 'Logo del emisor' }))
           : React.createElement('div', { className: 'logo fallback' }, iniciales(emisor.nombre)),
         React.createElement('div', { className: 'brand-copy' },
           React.createElement('span', { className: 'overline' }, 'COMPROBANTE DE INGRESO'),

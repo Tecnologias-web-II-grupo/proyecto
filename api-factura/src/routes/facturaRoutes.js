@@ -1,9 +1,15 @@
 const express = require('express');
 const router = express.Router();
-const { crearFactura, consultarFactura, actualizarLogoFactura } = require('../controllers/facturaController');
-const { validateFacturaMiddleware } = require('../middleware/validaFactura');
+const {
+  crearFactura,
+  consultarFactura,
+  listarFacturas,
+  actualizarLogoFactura,
+} = require('../controllers/facturaController');
+const { normalizarFacturaEntrada, validateFacturaMiddleware } = require('../middleware/validaFactura');
 
-router.post('/', validateFacturaMiddleware, crearFactura);
+router.get('/', listarFacturas);
+router.post('/', normalizarFacturaEntrada, validateFacturaMiddleware, crearFactura);
 router.patch('/:id/logo', actualizarLogoFactura);
 router.get('/:id', consultarFactura);
 

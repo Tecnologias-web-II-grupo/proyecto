@@ -1,59 +1,68 @@
-# Contrato de consumo - API de facturación al cliente
+# API compartida de facturación
 
-Este servicio es independiente del micrositio que lo consuma. No está amarrado a EduControl.
+Este servicio recibe facturas desde distintos proyectos, las almacena y permite consultar sus datos o generar un PDF visual de solo lectura.
 
-## Flujo compartido
+## Endpoints
 
-1. El micrositio envía la venta a `POST /api/facturas`.
-2. El API guarda la factura y retorna el objeto registrado con su `id`.
-3. Cualquier servicio autorizado puede recuperar los datos normalizados con `GET /api/facturas/:id`.
-4. El PDF de solo lectura se obtiene con `GET /api/documentos/facturas/:id?formato=pdf`.
+- `POST /api/facturas`: registra una factura.
+- `GET /api/facturas/:id`: devuelve una factura completa en JSON.
+- `GET /api/facturas?origen=...&referenciaExterna=...&limit=...&offset=...`: consulta el histórico resumido.
+- `PATCH /api/facturas/:id/logo`: actualiza el logo visual de una factura existente.
+- `GET /api/documentos/facturas/:id?formato=pdf`: genera o recupera el PDF.
+- `GET /health`: estado ligero del API.
+- `GET /health/documentos`: estado del motor PDF, cola y navegador.
 
-## Ejemplo mínimo
+## Interoperabilidad
+
+Cada proyecto puede enviar `origen` y `referenciaExterna`. La combinación permite que una misma operación sea idempotente: si el cliente reintenta por un timeout, el API reutiliza la factura existente en vez de crear un duplicado.
+
+Ejemplo:
 
 ```json
 {
-  "fecha": "2026-08-18T01:48:59.000Z",
+  "origen": "mi-proyecto",
+  "referenciaExterna": "venta:12345",
+  "fecha": "2026-08-19T20:00:00-06:00",
   "moneda": "CRC",
   "condicionVenta": "01",
-  "medioPago": "99",
+  "medioPago": "04",
   "emisor": {
-    "nombre": "Nombre del negocio",
+    "nombre": "Mi Negocio",
     "identificacion": { "tipo": "02", "numero": "3-101-000000" },
-    "correo": "facturacion@negocio.com",
+    "correo": "facturacion@minegocio.com",
     "logoUrl": "data:image/png;base64,..."
   },
   "receptor": {
-    "nombre": "Nombre del cliente",
-    "identificacion": { "tipo": "01", "numero": "111111111" },
-    "correo": "cliente@correo.com"
+    "nombre": "Cliente",
+    "identificacion": { "tipo": "01", "numero": "101110111" },
+    "correo": "cliente@example.com"
   },
   "items": [
     {
       "numeroLinea": 1,
       "detalle": "Servicio",
       "cantidad": 1,
-      "precioUnitario": 35000,
+      "precioUnitario": 10000,
       "descuento": 0,
       "impuesto": { "tarifa": 0 },
-      "subtotal": 35000,
-      "montoTotalLinea": 35000
+      "subtotal": 10000,
+      "montoTotalLinea": 10000
     }
   ],
   "totales": {
     "totalGravado": 0,
-    "totalExento": 35000,
+    "totalExento": 10000,
     "totalDescuentos": 0,
     "totalImpuesto": 0,
-    "totalComprobante": 35000
+    "totalComprobante": 10000
   }
 }
 ```
 
 ## Logo
 
-`emisor.logoUrl` es opcional y debe ser una data URL PNG, JPG o WEBP. Si no se envía logo, la plantilla utiliza las iniciales del nombre del emisor. Esto permite que cada micrositio use su propia identidad visual sin modificar el API.
+`emisor.logoUrl` es opcional. Debe enviarse como data URL PNG, JPG o WEBP de hasta 500 KB. De esta manera cada proyecto puede usar su propio logo sin depender de rutas locales del servidor.
 
-## CORS
+## Rendimiento del PDF
 
-Las llamadas servicio-a-servicio no requieren CORS. Para consumo directo desde navegadores, `FRONTEND_URL` acepta una lista separada por comas. Para una demostración controlada puede configurarse `CORS_ALLOW_ALL=true`.
+Chrome se mantiene abierto y reutilizable. Las solicitudes PDF se atienden con concurrencia controlada y cola; además, documentos idénticos se coalescen y se almacenan temporalmente en memoria. El servicio solo devuelve capacidad temporal cuando la cola realmente alcanza el límite configurado.

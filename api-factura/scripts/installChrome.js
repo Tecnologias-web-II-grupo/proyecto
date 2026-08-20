@@ -12,7 +12,7 @@ console.log(`[puppeteer] Caché: ${CACHE_DIR}`);
 const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 const result = spawnSync(
   npx,
-  ['puppeteer', 'browsers', 'install'],
+  ['puppeteer', 'browsers', 'install', 'chrome'],
   {
     cwd: ROOT_DIR,
     env: { ...process.env, PUPPETEER_CACHE_DIR: CACHE_DIR },

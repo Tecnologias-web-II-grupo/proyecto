@@ -15,24 +15,24 @@ function InvoiceSummary({ factura }) {
   // (origen, perfil, formato, proveedor, etc.) permanecen en el JSON,
   // pero no se repiten visualmente en la factura del cliente.
   const rows = [
-    positivo(t.totalServGravados) ? ['Servicios gravados', t.totalServGravados] : null,
-    positivo(t.totalServExentos) ? ['Servicios exentos', t.totalServExentos] : null,
-    positivo(t.totalServExonerados) ? ['Servicios exonerados', t.totalServExonerados] : null,
-    positivo(t.totalServNoSujetos) ? ['Servicios no sujetos', t.totalServNoSujetos] : null,
-    positivo(t.totalMercanciasGravadas) ? ['Mercancías gravadas', t.totalMercanciasGravadas] : null,
-    positivo(t.totalMercanciasExentas) ? ['Mercancías exentas', t.totalMercanciasExentas] : null,
-    positivo(t.totalMercanciasExoneradas) ? ['Mercancías exoneradas', t.totalMercanciasExoneradas] : null,
-    positivo(t.totalMercanciasNoSujetas) ? ['Mercancías no sujetas', t.totalMercanciasNoSujetas] : null,
+    existe(t.totalServGravados) ? ['Servicios gravados', t.totalServGravados] : null,
+    existe(t.totalServExentos) ? ['Servicios exentos', t.totalServExentos] : null,
+    existe(t.totalServExonerados) ? ['Servicios exonerados', t.totalServExonerados] : null,
+    existe(t.totalServNoSujetos) ? ['Servicios no sujetos', t.totalServNoSujetos] : null,
+    existe(t.totalMercanciasGravadas) ? ['Mercancías gravadas', t.totalMercanciasGravadas] : null,
+    existe(t.totalMercanciasExentas) ? ['Mercancías exentas', t.totalMercanciasExentas] : null,
+    existe(t.totalMercanciasExoneradas) ? ['Mercancías exoneradas', t.totalMercanciasExoneradas] : null,
+    existe(t.totalMercanciasNoSujetas) ? ['Mercancías no sujetas', t.totalMercanciasNoSujetas] : null,
     existe(t.totalGravado) ? ['Total gravado', t.totalGravado] : null,
-    positivo(t.totalExento) ? ['Total exento', t.totalExento] : null,
-    positivo(t.totalExonerado) ? ['Total exonerado', t.totalExonerado] : null,
-    positivo(t.totalNoSujeto) ? ['Total no sujeto', t.totalNoSujeto] : null,
+    existe(t.totalExento) ? ['Total exento', t.totalExento] : null,
+    existe(t.totalExonerado) ? ['Total exonerado', t.totalExonerado] : null,
+    existe(t.totalNoSujeto) ? ['Total no sujeto', t.totalNoSujeto] : null,
     existe(t.totalVenta) ? ['Total venta', t.totalVenta] : null,
-    positivo(t.totalDescuentos) ? ['Descuentos', t.totalDescuentos] : null,
+    existe(t.totalDescuentos) ? ['Descuentos', t.totalDescuentos] : null,
     existe(t.totalVentaNeta) ? ['Venta neta', t.totalVentaNeta] : null,
     existe(t.totalImpuesto) ? ['Impuestos', t.totalImpuesto] : null,
-    positivo(t.totalIVADevuelto) ? ['IVA devuelto', t.totalIVADevuelto] : null,
-    positivo(t.totalOtrosCargos) ? ['Otros cargos', t.totalOtrosCargos] : null
+    existe(t.totalIVADevuelto) ? ['IVA devuelto', t.totalIVADevuelto] : null,
+    existe(t.totalOtrosCargos) ? ['Otros cargos', t.totalOtrosCargos] : null
   ].filter(Boolean);
 
   const refs = Array.isArray(factura.referencias) ? factura.referencias : [];
@@ -46,7 +46,7 @@ function InvoiceSummary({ factura }) {
 
   return React.createElement('section', { className: 'closing closing-clean' },
     React.createElement('div', { className: 'totals totals-prominent' },
-      React.createElement('h3', null, 'Resumen'),
+      React.createElement('h3', null, 'Resumen de importes'),
       React.createElement('div', { className: 'totals-grid' },
         ...rows.map(([label, value]) => React.createElement('div', { className: 'total-row', key: label },
           React.createElement('span', null, label),

@@ -66,3 +66,15 @@ Ejemplo:
 ## Rendimiento del PDF
 
 Chrome se mantiene abierto y reutilizable. Las solicitudes PDF se atienden con concurrencia controlada y cola; además, documentos idénticos se coalescen y se almacenan temporalmente en memoria. El servicio solo devuelve capacidad temporal cuando la cola realmente alcanza el límite configurado.
+
+## Idempotencia y facturas por operación
+
+Cada sistema consumidor debe enviar un `origen` estable y una `referenciaExterna` única por operación/cargo/venta. La misma combinación se considera la misma factura y se reutiliza para evitar duplicados.
+
+Ejemplos:
+
+- `origen: "educontrol"`, `referenciaExterna: "cargo:15"` -> una factura para ese cargo.
+- `origen: "educontrol"`, `referenciaExterna: "cargo:22"` -> otra factura distinta, aunque pertenezca al mismo estudiante.
+- Otro proyecto puede usar `origen: "tienda-grupo-4"`, `referenciaExterna: "venta:903"` sin mezclarse con EduControl.
+
+Esto permite que un mismo cliente/persona tenga tantas facturas como operaciones distintas haya pagado, manteniendo cada comprobante consultable de forma independiente.

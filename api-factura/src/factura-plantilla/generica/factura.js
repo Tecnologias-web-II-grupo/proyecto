@@ -118,21 +118,25 @@ function Summary({f}) {
   const refs=Array.isArray(f.referencias)?f.referencias:[];
   const cargos=Array.isArray(f.otrosCargos)?f.otrosCargos:[];
   const otros=obtenerOtros(f);
+  const condicion=f.detalleCondicionVenta||f.detalleCondicionVentaOtro;
   return React.createElement('section',{className:'closing'},
     React.createElement('div',{className:'closing-notes'},
-      React.createElement('div',{className:'closing-kicker'},'DATOS DEL COMPROBANTE'),
+      React.createElement('div',{className:'closing-kicker'},'INFORMACIÓN DEL COMPROBANTE'),
+      React.createElement('h3',{className:'closing-title'},'Datos del comprobante'),
       React.createElement('div',{className:'closing-meta'},
         f.perfilValidacion?React.createElement('span',null,React.createElement('b',null,'Perfil'),texto(f.perfilValidacion)):null,
         React.createElement('span',null,React.createElement('b',null,'Factura'),texto(f.id,'—')),
-        (f.detalleCondicionVenta||f.detalleCondicionVentaOtro)?React.createElement('span',null,React.createElement('b',null,'Detalle condición'),texto(f.detalleCondicionVenta||f.detalleCondicionVentaOtro)):null,
-        medios.length?React.createElement('span',null,React.createElement('b',null,'Pago'),medios.map(m=>`${cod(MP,m.tipo)} · ${dinero(m.total??m.monto,f.moneda)}`).join(' | ')):null,
+        condicion?React.createElement('span',null,React.createElement('b',null,'Condición'),texto(condicion)):null,
+        medios.length?React.createElement('span',null,React.createElement('b',null,'Medio de pago'),medios.map(m=>`${cod(MP,m.tipo)} · ${dinero(m.total??m.monto,f.moneda)}`).join(' | ')):null,
+        f.origen?React.createElement('span',null,React.createElement('b',null,'Sistema de origen'),texto(f.origen)):null,
+        f.referenciaExterna?React.createElement('span',null,React.createElement('b',null,'Referencia'),texto(f.referenciaExterna)):null,
         React.createElement('span',null,React.createElement('b',null,'Formato'),'PDF de solo lectura')
       ),
       (otros.length||refs.length||cargos.length)?React.createElement('div',{className:'closing-extra'},
-        otros.map((o,i)=>React.createElement('p',{key:`o${i}`},o)),
-        cargos.map((c,i)=>React.createElement('p',{key:`c${i}`},`Cargo adicional: ${c.detalle||c.tipoDocumento||'Cargo'} · ${dinero(c.monto,f.moneda)}`)),
-        refs.map((r,i)=>React.createElement('p',{key:`r${i}`},`Referencia: ${r.tipoDocumento||'—'} · ${r.numero||r.numeroDocumento||'—'} · ${fecha(r.fechaEmision)}${r.razon?` · ${r.razon}`:''}`))
-      ):React.createElement('p',{className:'closing-help'},'Comprobante generado por el servicio de facturación con los datos suministrados por el sistema emisor.')
+        otros.length?React.createElement('div',{className:'note-group'},React.createElement('b',null,'Observaciones e información adicional'),...otros.map((o,i)=>React.createElement('p',{key:`o${i}`},o))):null,
+        cargos.length?React.createElement('div',{className:'note-group'},React.createElement('b',null,'Otros cargos'),...cargos.map((c,i)=>React.createElement('p',{key:`c${i}`},`${c.detalle||c.tipoDocumento||'Cargo'} · ${dinero(c.monto,f.moneda)}`))):null,
+        refs.length?React.createElement('div',{className:'note-group'},React.createElement('b',null,'Referencias'),...refs.map((r,i)=>React.createElement('p',{key:`r${i}`},`${r.tipoDocumento||'—'} · ${r.numero||r.numeroDocumento||'—'} · ${fecha(r.fechaEmision)}${r.razon?` · ${r.razon}`:''}`))):null
+      ):React.createElement('p',{className:'closing-help'},'Comprobante generado con los datos suministrados por el sistema emisor.')
     ),
     React.createElement('div',{className:'totals'},React.createElement('h3',null,'Resumen de importes'),
       React.createElement('div',{className:'totals-grid'},...rows.map(([l,v])=>React.createElement('div',{className:'total-row',key:l},React.createElement('span',null,l),React.createElement('strong',null,dinero(v,f.moneda))))),

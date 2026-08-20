@@ -12,8 +12,6 @@ function FiscalDetails({ factura }) {
     if (!tiene) return null;
     return {
       linea: it.numeroLinea ?? i + 1,
-      unidad: it.unidadMedidaComercial || it.unidadMedida || '—',
-      tipo: it.tipoTransaccion || '—',
       base: dinero(it.baseImponible ?? it.subtotal ?? 0, factura.moneda),
       codigo: codigoComercial,
       impuesto,
@@ -22,18 +20,13 @@ function FiscalDetails({ factura }) {
 
   if (!rows.length) return null;
   return React.createElement('section', { className: 'fiscal-details' },
-    React.createElement('div', { className: 'fiscal-title' },
-      React.createElement('span', null, 'DESGLOSE FISCAL'),
-      React.createElement('strong', null, 'Información complementaria por línea')
-    ),
+    React.createElement('h3', null, 'Información fiscal por línea'),
     React.createElement('table', { className: 'fiscal-table' },
       React.createElement('thead', null, React.createElement('tr', null,
-        ['Línea', 'Unidad comercial', 'Tipo', 'Base imponible', 'Código comercial', 'Impuestos'].map((x) => React.createElement('th', { key: x }, x))
+        ['Línea', 'Base imponible', 'Código comercial', 'Impuesto'].map((x) => React.createElement('th', { key: x }, x))
       )),
       React.createElement('tbody', null, ...rows.map((r) => React.createElement('tr', { key: r.linea },
         React.createElement('td', null, r.linea),
-        React.createElement('td', null, r.unidad),
-        React.createElement('td', null, r.tipo),
         React.createElement('td', { className: 'money' }, r.base),
         React.createElement('td', null, r.codigo),
         React.createElement('td', null, r.impuesto)

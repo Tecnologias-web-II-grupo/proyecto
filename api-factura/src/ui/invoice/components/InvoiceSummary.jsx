@@ -1,28 +1,24 @@
 const React = require('react');
 const { dinero, codigo, PAGOS, otrosTexto, fecha, texto } = require('../formatters');
 
+function positivo(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && Math.abs(n) > 0.000001;
+}
+
 function InvoiceSummary({ factura }) {
   const t = factura.totales || {};
+  const subtotal = t.totalVentaNeta ?? t.totalVenta ?? t.totalGravado ?? t.totalExento;
   const rows = [
-    ['Servicios gravados', t.totalServiciosGravados ?? t.totalServGravados],
-    ['Servicios exentos', t.totalServiciosExentos ?? t.totalServExentos],
-    ['Servicios exonerados', t.totalServiciosExonerados ?? t.totalServExonerados],
-    ['Servicios no sujetos', t.totalServiciosNoSujetos ?? t.totalServNoSujetos],
-    ['Mercancías gravadas', t.totalMercanciasGravadas],
-    ['Mercancías exentas', t.totalMercanciasExentas],
-    ['Mercancías exoneradas', t.totalMercanciasExoneradas],
-    ['Mercancías no sujetas', t.totalMercanciasNoSujetas],
-    ['Total gravado', t.totalGravado],
-    ['Total exento', t.totalExento],
-    ['Total exonerado', t.totalExonerado],
-    ['Total no sujeto', t.totalNoSujeto],
-    ['Total venta', t.totalVenta],
-    ['Descuentos', t.totalDescuentos],
-    ['Venta neta', t.totalVentaNeta],
-    ['Impuestos', t.totalImpuesto],
-    ['IVA devuelto', t.totalIVADevuelto],
-    ['Otros cargos', t.totalOtrosCargos]
-  ].filter(([, value]) => value !== undefined && value !== null);
+    ['Subtotal / venta neta', subtotal, true],
+    ['Descuentos', t.totalDescuentos, positivo(t.totalDescuentos)],
+    ['Impuestos', t.totalImpuesto, positivo(t.totalImpuesto)],
+    ['IVA devuelto', t.totalIVADevuelto, positivo(t.totalIVADevuelto)],
+    ['Otros cargos', t.totalOtrosCargos, positivo(t.totalOtrosCargos)],
+    ['Total exento', t.totalExento, positivo(t.totalExento)],
+    ['Total exonerado', t.totalExonerado, positivo(t.totalExonerado)],
+    ['Total no sujeto', t.totalNoSujeto, positivo(t.totalNoSujeto)]
+  ].filter(([, value, visible]) => visible && value !== undefined && value !== null);
 
   const medios = Array.isArray(t.mediosPago) ? t.mediosPago : [];
   const refs = Array.isArray(factura.referencias) ? factura.referencias : [];
@@ -31,24 +27,21 @@ function InvoiceSummary({ factura }) {
   const condicion = factura.detalleCondicionVenta || factura.detalleCondicionVentaOtro;
 
   const meta = [
-    factura.perfilValidacion ? ['Perfil', factura.perfilValidacion] : null,
-    ['Factura', factura.id || '—'],
-    condicion ? ['Detalle condición', condicion] : null,
     medios.length ? ['Pago', medios.map((m) => `${codigo(PAGOS, m.tipo)} · ${dinero(m.total ?? m.monto, factura.moneda)}`).join(' | ')] : null,
-    factura.origen ? ['Sistema de origen', factura.origen] : null,
-    factura.referenciaExterna ? ['Referencia', factura.referenciaExterna] : null,
-    ['Formato', 'PDF de solo lectura']
+    condicion ? ['Condición', condicion] : null,
+    factura.origen ? ['Origen', factura.origen] : null,
+    factura.referenciaExterna ? ['Referencia', factura.referenciaExterna] : null
   ].filter(Boolean);
 
   return React.createElement('section', { className: 'closing' },
     React.createElement('div', { className: 'closing-notes' },
-      React.createElement('div', { className: 'closing-kicker' }, 'DATOS DEL COMPROBANTE'),
-      React.createElement('div', { className: 'closing-meta' },
-        ...meta.map(([label, value]) => React.createElement('span', { key: label },
-          React.createElement('b', null, label),
-          texto(value)
-        ))
-      ),
+      React.createElement('h3', null, 'Información del comprobante'),
+      meta.length ? React.createElement('dl', { className: 'closing-meta' },
+        ...meta.flatMap(([label, value]) => [
+          React.createElement('dt', { key: `${label}-dt` }, label),
+          React.createElement('dd', { key: `${label}-dd` }, texto(value))
+        ])
+      ) : null,
       (otros.length || cargos.length || refs.length) ? React.createElement('div', { className: 'closing-extra' },
         ...otros.map((o, i) => React.createElement('p', { key: `o${i}` }, o)),
         ...cargos.map((c, i) => React.createElement('p', { key: `c${i}` }, `Cargo adicional: ${c.detalle || c.tipoDocumento || 'Cargo'} · ${dinero(c.monto, factura.moneda)}`)),
@@ -56,15 +49,13 @@ function InvoiceSummary({ factura }) {
       ) : null
     ),
     React.createElement('div', { className: 'totals' },
-      React.createElement('h3', null, 'Resumen de importes'),
-      React.createElement('div', { className: 'totals-grid' },
-        ...rows.map(([label, value]) => React.createElement('div', { className: 'total-row', key: label },
-          React.createElement('span', null, label),
-          React.createElement('strong', null, dinero(value, factura.moneda))
-        ))
-      ),
+      React.createElement('h3', null, 'Totales'),
+      ...rows.map(([label, value]) => React.createElement('div', { className: 'total-row', key: label },
+        React.createElement('span', null, label),
+        React.createElement('strong', null, dinero(value, factura.moneda))
+      )),
       React.createElement('div', { className: 'grand' },
-        React.createElement('span', null, 'TOTAL COMPROBANTE'),
+        React.createElement('span', null, 'TOTAL'),
         React.createElement('strong', null, dinero(t.totalComprobante, factura.moneda))
       )
     )

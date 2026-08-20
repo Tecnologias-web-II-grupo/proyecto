@@ -52,7 +52,7 @@ function Header({f}) {
       React.createElement(D,{l:'Fecha de emisión',v:fecha(f.fecha)}),React.createElement(D,{l:'Moneda',v:f.moneda}),
       React.createElement(D,{l:'Condición de venta',v:cod(CV,f.condicionVenta)}),React.createElement(D,{l:'Medio de pago',v:cod(MP,f.medioPago)}),
       f.plazoCreditoDias!==undefined&&f.plazoCreditoDias!==null?React.createElement(D,{l:'Plazo de crédito',v:`${f.plazoCreditoDias} días`}):null,
-      f.proveedorSistemas?React.createElement(D,{l:'Proveedor de sistemas',v:f.proveedorSistemas,mono:true}):null,
+      f.proveedorSistemas?React.createElement(D,{l:'Proveedor de sistemas',v:(typeof f.proveedorSistemas==='object'?(f.proveedorSistemas.nombre||f.proveedorSistemas.identificacion||'No indicado'):f.proveedorSistemas)}):null,
       f.totales?.tipoCambio!==undefined?React.createElement(D,{l:'Tipo de cambio',v:f.totales.tipoCambio}):null
     )
   );

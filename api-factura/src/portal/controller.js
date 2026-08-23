@@ -34,6 +34,27 @@ function compactLocation(value = {}) {
   };
   return Object.values(out).some(Boolean) ? out : null;
 }
+
+function invoiceLocation(value = {}) {
+  const provincia = clean(value.provincia, 80);
+  const canton = clean(value.canton, 80);
+  const distrito = clean(value.distrito, 80);
+  const otras = clean(value.otrasSenas, 250);
+  const out = {};
+  // El perfil visual acepta nombres legibles. Solo enviamos códigos estructurados
+  // cuando el usuario realmente ingresó códigos numéricos.
+  if (/^\d{1,3}$/.test(provincia)) out.provincia = provincia;
+  if (/^\d{1,3}$/.test(canton)) out.canton = canton;
+  if (/^\d{1,3}$/.test(distrito)) out.distrito = distrito;
+  const nombres = [
+    provincia && !/^\d{1,3}$/.test(provincia) ? provincia : '',
+    canton && !/^\d{1,3}$/.test(canton) ? canton : '',
+    distrito && !/^\d{1,3}$/.test(distrito) ? distrito : ''
+  ].filter(Boolean);
+  const texto = [nombres.join(', '), otras].filter(Boolean).join('. ');
+  if (texto) out.otrasSenas = texto.slice(0, 250);
+  return Object.keys(out).length ? out : undefined;
+}
 async function portalMerchant(userId) {
   const [rows] = await pool.execute('SELECT u.empresa, u.tipo_identificacion, u.numero_identificacion, p.bank_merchant_id, p.bank_afiliado FROM portal_usuarios u LEFT JOIN portal_perfiles p ON p.usuario_id=u.id WHERE u.id=? LIMIT 1', [userId]);
   const row = rows[0] || {};
@@ -132,6 +153,7 @@ async function saveBankProfile(req, res) {
   const affiliated = req.body?.bankAfiliado === true || String(req.body?.bankAfiliado || '').toLowerCase() === 'true';
   const merchantId = clean(req.body?.bankMerchantId, 160);
   if (affiliated && !merchantId) return res.status(400).json({ error:'Indica el identificador de comercio de Credenciales API de BankyFinanzas.' });
+  if (merchantId && !/^[A-Za-z0-9_-]{20,128}$/.test(merchantId)) return res.status(400).json({ error:'El identificador de comercio de BankyFinanzas no tiene un formato válido.' });
   await pool.execute(
     `INSERT INTO portal_perfiles (usuario_id, bank_merchant_id, bank_afiliado)
      VALUES (?, ?, ?)
@@ -151,7 +173,7 @@ function normalizeItems(items) {
     const detalle = clean(item.detalle, 255);
     const cabys = clean(item.codigoCabys, 13);
     if (!detalle) throw new Error(`Escribe la descripción de la línea ${index + 1}.`);
-    if (!cabys || !/^\d{13}$/.test(cabys)) throw new Error(`La línea ${index + 1} requiere un código CAByS de 13 dígitos.`);
+    if (cabys && !/^\d{13}$/.test(cabys)) throw new Error(`El CAByS de la línea ${index + 1} debe tener 13 dígitos cuando se indique.`);
     if (!Number.isInteger(cantidad) || cantidad < 1 || cantidad > 100000) throw new Error(`La cantidad de la línea ${index + 1} debe ser un número entero entre 1 y 100000.`);
     if (!Number.isInteger(precio) || precio < 1 || precio > 999999999) throw new Error(`El precio de la línea ${index + 1} debe ser un monto entero mayor que cero.`);
     if (!Number.isInteger(descuento) || descuento < 0) throw new Error(`El descuento de la línea ${index + 1} debe ser un monto entero mayor o igual a cero.`);
@@ -165,7 +187,7 @@ function normalizeItems(items) {
     return {
       numeroLinea: index + 1,
       tipoItem: item.tipoItem === 'mercancia' ? 'mercancia' : 'servicio',
-      codigoCabys: cabys,
+      codigoCabys: cabys || undefined,
       codigosComerciales: codigoComercial ? [{ tipo:'04', codigo:codigoComercial }] : [],
       cantidad,
       unidadMedida: clean(item.unidadMedida || 'Sp', 20),
@@ -380,13 +402,13 @@ async function buildInvoiceFromSale(saleRow, userId) {
       nombre:p.empresa, nombreComercial:p.nombre_comercial||p.empresa, actividadEconomica:p.actividad_economica||'000000',
       identificacion:{tipo:p.tipo_identificacion,numero:decrypt(p.numero_identificacion)}, correo:p.correo_facturacion,
       telefono:p.telefono?{codigoPais:'506',numero:String(p.telefono).replace(/\D/g,'')}:undefined,
-      ubicacion:(p.provincia||p.canton||p.distrito||p.otras_senas)?{provincia:p.provincia||'',canton:p.canton||'',distrito:p.distrito||'',otrasSenas:p.otras_senas||''}:undefined,
+      ubicacion:invoiceLocation({provincia:p.provincia,canton:p.canton,distrito:p.distrito,otrasSenas:p.otras_senas}),
       logoUrl:p.logo||null,logoUrlBlanco:p.logo_blanco||null,logoPosicion:p.logo_posicion||'left'
     },
     receptor:{
       nombre:saleRow.receptor_nombre,nombreComercial:extra.nombreComercial||undefined,actividadEconomica:extra.actividadEconomica||undefined,
       identificacion:saleRow.receptor_numero_id?{tipo:saleRow.receptor_tipo_id,numero:decrypt(saleRow.receptor_numero_id)}:undefined,correo:saleRow.receptor_correo,
-      telefono:extra.telefono?{codigoPais:'506',numero:String(extra.telefono).replace(/\D/g,'')}:undefined,ubicacion:receptorUb||undefined
+      telefono:extra.telefono?{codigoPais:'506',numero:String(extra.telefono).replace(/\D/g,'')}:undefined,ubicacion:invoiceLocation(receptorUb||{})
     },
     items,
     otrosCargos:[],
@@ -422,7 +444,7 @@ async function processPaidSale(saleId) {
     await pool.execute("UPDATE portal_ventas SET estado='facturada', factura_id=?, error_detalle=NULL WHERE id=?", [result.id, saleId]);
     return result.id;
   } catch (error) {
-    await pool.execute("UPDATE portal_ventas SET estado='integracion_fallida', error_detalle=? WHERE id=?", [error.message, saleId]);
+    await pool.execute("UPDATE portal_ventas SET estado='pagada', error_detalle=? WHERE id=?", [error.message, saleId]);
     throw error;
   }
 }

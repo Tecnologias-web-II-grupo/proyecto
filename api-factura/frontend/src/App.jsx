@@ -5,6 +5,7 @@ import LogoDesigner from './components/LogoDesigner.jsx';
 import SaleWorkspace from './components/SaleWorkspace.jsx';
 import SalesHistory from './components/SalesHistory.jsx';
 import BankConnection from './components/BankConnection.jsx';
+import ServiceGuide from './components/ServiceGuide.jsx';
 
 function PaymentReturnBridge(){
   useEffect(()=>{
@@ -24,6 +25,7 @@ export default function App(){
   const [loading,setLoading]=useState(true);
   const [tab,setTab]=useState('sale');
   const [refreshKey,setRefreshKey]=useState(0);
+  const [guideOpen,setGuideOpen]=useState(false);
 
   const isBankReturn=useMemo(()=>{
     const p=new URLSearchParams(window.location.search);
@@ -48,6 +50,7 @@ export default function App(){
     <header className="site-header">
       <div className="brand-mark">FB</div>
       <div className="brand-copy-ui"><b>Factura Bonita</b><span>Facturas claras para tus ventas</span></div>
+      <button type="button" className="header-guide-button" onClick={()=>setGuideOpen(true)}>Cómo funciona</button>
       {me&&<nav className="customer-nav">
         <button className={tab==='sale'?'active':''} onClick={()=>setTab('sale')}>Nueva venta</button>
         <button className={tab==='history'?'active':''} onClick={()=>setTab('history')}>Mis facturas</button>
@@ -57,7 +60,9 @@ export default function App(){
       </nav>}
     </header>
 
-    {!me?
+    {guideOpen?
+      <main className="dashboard guide-dashboard"><ServiceGuide loggedIn={Boolean(me)} onBack={()=>setGuideOpen(false)}/></main>
+      :!me?
       <main className="landing">
         <section className="hero-copy">
           <span className="eyebrow">FACTURA BONITA</span>

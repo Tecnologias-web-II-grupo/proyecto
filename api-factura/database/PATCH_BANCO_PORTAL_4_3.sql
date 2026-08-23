@@ -1,0 +1,15 @@
+USE facturaBonita;
+
+ALTER TABLE portal_perfiles
+  MODIFY COLUMN provincia VARCHAR(80) NULL,
+  MODIFY COLUMN canton VARCHAR(80) NULL,
+  MODIFY COLUMN distrito VARCHAR(80) NULL;
+
+ALTER TABLE portal_clientes
+  MODIFY COLUMN provincia VARCHAR(80) NULL,
+  MODIFY COLUMN canton VARCHAR(80) NULL,
+  MODIFY COLUMN distrito VARCHAR(80) NULL;
+
+ALTER TABLE portal_perfiles
+  ADD COLUMN IF NOT EXISTS bank_merchant_id VARCHAR(160) NULL AFTER logo_posicion,
+  ADD COLUMN IF NOT EXISTS bank_afiliado BOOLEAN NOT NULL DEFAULT FALSE AFTER bank_merchant_id;

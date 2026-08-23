@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 
-export default function LogoDesigner({ me, onSaved }){
+export default function LogoDesigner({ me, onSaved, onBack }){
   const [position,setPosition]=useState(me?.perfil?.logoPosicion||'left');
   const [file,setFile]=useState(null);
   const [whiteFile,setWhiteFile]=useState(null);
@@ -23,7 +23,7 @@ export default function LogoDesigner({ me, onSaved }){
   }
 
   return <section className="panel brand-panel">
-    <div className="panel-heading"><div><span className="eyebrow">TU LOGO</span><h2>Personaliza tu factura</h2><p className="muted">Sube tu logo y elige dónde quieres que aparezca en el encabezado del comprobante.</p></div></div>
+    <div className="panel-heading"><div><span className="eyebrow">TU LOGO</span><h2>Personaliza tu factura</h2><p className="muted">Sube tu logo y elige dónde quieres que aparezca en el encabezado del comprobante.</p></div>{onBack&&<button type="button" className="back-button" onClick={onBack}>← Volver</button>}</div>
     <div className="designer-grid logo-only-grid">
       <div className="logo-controls">
         <label>Logo principal<input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>setFile(e.target.files?.[0]||null)} /></label>

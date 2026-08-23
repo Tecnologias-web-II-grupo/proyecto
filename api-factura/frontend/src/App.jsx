@@ -4,6 +4,7 @@ import AuthPanel from './components/AuthPanel.jsx';
 import LogoDesigner from './components/LogoDesigner.jsx';
 import SaleWorkspace from './components/SaleWorkspace.jsx';
 import SalesHistory from './components/SalesHistory.jsx';
+import BankConnection from './components/BankConnection.jsx';
 
 function PaymentReturnBridge(){
   useEffect(()=>{
@@ -50,7 +51,8 @@ export default function App(){
       {me&&<nav className="customer-nav">
         <button className={tab==='sale'?'active':''} onClick={()=>setTab('sale')}>Nueva venta</button>
         <button className={tab==='history'?'active':''} onClick={()=>setTab('history')}>Mis facturas</button>
-        <button className={tab==='brand'?'active':''} onClick={()=>setTab('brand')}>Mi marca</button>
+        <button className={tab==='brand'?'active':''} onClick={()=>setTab('brand')}>Mi logo</button>
+        <button className={tab==='bank'?'active':''} onClick={()=>setTab('bank')}>{me?.perfil?.bankAfiliado?'Cobros':'Cobros · configurar'}</button>
         <button className="logout" onClick={()=>{setToken('');setMe(null)}}>Salir</button>
       </nav>}
     </header>
@@ -70,9 +72,10 @@ export default function App(){
         <section className="welcome compact-welcome">
           <div><span className="eyebrow">TU NEGOCIO</span><h1>{me.empresa}</h1><p>Hola, {me.nombre}. Todo listo para seguir vendiendo.</p></div>
         </section>
-        {tab==='sale'&&<SaleWorkspace config={config} me={me} onCompleted={()=>setRefreshKey(k=>k+1)}/>} 
-        {tab==='history'&&<SalesHistory refreshKey={refreshKey}/>} 
-        {tab==='brand'&&<LogoDesigner me={me} onSaved={setMe}/>} 
+        {tab==='sale'&&<SaleWorkspace config={{...config,bank:{...(config?.bank||{}),ready:Boolean(me?.perfil?.bankAfiliado)}}} me={me} onCompleted={()=>setRefreshKey(k=>k+1)}/>} 
+        {tab==='history'&&<SalesHistory refreshKey={refreshKey} onBack={()=>setTab('sale')}/>} 
+        {tab==='brand'&&<LogoDesigner me={me} onSaved={setMe} onBack={()=>setTab('sale')}/>} 
+        {tab==='bank'&&<BankConnection config={config} me={me} onSaved={setMe} onBack={()=>setTab('sale')}/>} 
       </main>
     }
     <footer className="site-footer"><div><strong>Factura Bonita</strong><span>Una forma simple de entregar tus facturas.</span></div><div className="footer-meta"><span>Ventas</span><span>Pagos</span><span>Facturas</span></div></footer>

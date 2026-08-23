@@ -30,17 +30,19 @@ function taxCode(rate) {
 }
 function compactLocation(value = {}) {
   const out = {
-    provincia: clean(value.provincia, 3), canton: clean(value.canton, 3), distrito: clean(value.distrito, 3), otrasSenas: clean(value.otrasSenas, 250),
+    provincia: clean(value.provincia, 80), canton: clean(value.canton, 80), distrito: clean(value.distrito, 80), otrasSenas: clean(value.otrasSenas, 250),
   };
   return Object.values(out).some(Boolean) ? out : null;
 }
 async function portalMerchant(userId) {
-  const [rows] = await pool.execute('SELECT empresa, tipo_identificacion, numero_identificacion FROM portal_usuarios WHERE id=? LIMIT 1', [userId]);
+  const [rows] = await pool.execute('SELECT u.empresa, u.tipo_identificacion, u.numero_identificacion, p.bank_merchant_id, p.bank_afiliado FROM portal_usuarios u LEFT JOIN portal_perfiles p ON p.usuario_id=u.id WHERE u.id=? LIMIT 1', [userId]);
   const row = rows[0] || {};
   return {
     name: clean(row.empresa, 160),
     id: row.numero_identificacion ? decrypt(row.numero_identificacion) : '',
     type: clean(row.tipo_identificacion, 2),
+    bankMerchantId: clean(row.bank_merchant_id, 160),
+    bankAfiliado: Boolean(row.bank_afiliado),
   };
 }
 
@@ -68,7 +70,7 @@ async function register(req, res) {
     await pool.execute(
       `INSERT INTO portal_perfiles (usuario_id, nombre_comercial, actividad_economica, telefono, provincia, canton, distrito, otras_senas)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, empresa, clean(req.body.actividadEconomica, 6), clean(req.body.telefono, 30), clean(req.body.provincia, 3), clean(req.body.canton, 3), clean(req.body.distrito, 3), clean(req.body.otrasSenas, 255)]
+      [id, empresa, clean(req.body.actividadEconomica, 6), clean(req.body.telefono, 30), clean(req.body.provincia, 80), clean(req.body.canton, 80), clean(req.body.distrito, 80), clean(req.body.otrasSenas, 255)]
     );
     return res.status(201).json({ id, nombre, email, empresa });
   } catch (error) {
@@ -93,7 +95,7 @@ async function me(req, res) {
   const [rows] = await pool.execute(
     `SELECT u.id, u.nombre, u.email, u.empresa, u.tipo_identificacion, u.numero_identificacion, u.correo_facturacion,
             p.nombre_comercial, p.actividad_economica, p.telefono, p.provincia, p.canton, p.distrito, p.otras_senas,
-            p.logo, p.logo_blanco, p.logo_posicion
+            p.logo, p.logo_blanco, p.logo_posicion, p.bank_merchant_id, p.bank_afiliado
      FROM portal_usuarios u LEFT JOIN portal_perfiles p ON p.usuario_id = u.id WHERE u.id = ? LIMIT 1`,
     [req.portalUser.usuario_id]
   );
@@ -105,6 +107,7 @@ async function me(req, res) {
       nombreComercial: u.nombre_comercial || '', actividadEconomica: u.actividad_economica || '', telefono: u.telefono || '',
       ubicacion: { provincia: u.provincia || '', canton: u.canton || '', distrito: u.distrito || '', otrasSenas: u.otras_senas || '' },
       logoUrl: u.logo || null, logoUrlBlanco: u.logo_blanco || null, logoPosicion: u.logo_posicion || 'left',
+      bankMerchantId: u.bank_merchant_id || '', bankAfiliado: Boolean(u.bank_afiliado),
     }
   });
 }
@@ -120,6 +123,19 @@ async function saveProfile(req, res) {
      VALUES (?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE logo=VALUES(logo), logo_blanco=VALUES(logo_blanco), logo_posicion=VALUES(logo_posicion)`,
     [req.portalUser.usuario_id, logo || existing.logo || null, logoBlanco || existing.logo_blanco || null, position]
+  );
+  return me(req, res);
+}
+
+
+async function saveBankProfile(req, res) {
+  const affiliated = req.body?.bankAfiliado === true || String(req.body?.bankAfiliado || '').toLowerCase() === 'true';
+  const merchantId = clean(req.body?.bankMerchantId, 160);
+  await pool.execute(
+    `INSERT INTO portal_perfiles (usuario_id, bank_merchant_id, bank_afiliado)
+     VALUES (?, ?, ?)
+     ON DUPLICATE KEY UPDATE bank_merchant_id=VALUES(bank_merchant_id), bank_afiliado=VALUES(bank_afiliado), updated_at=CURRENT_TIMESTAMP`,
+    [req.portalUser.usuario_id, merchantId || null, affiliated ? 1 : 0]
   );
   return me(req, res);
 }
@@ -205,9 +221,41 @@ async function createSale(req, res) {
     `INSERT INTO portal_clientes (usuario_id,nombre,nombre_comercial,tipo_identificacion,numero_identificacion,identificacion_hash,correo,actividad_economica,telefono,provincia,canton,distrito,otras_senas)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
      ON DUPLICATE KEY UPDATE nombre=VALUES(nombre),nombre_comercial=VALUES(nombre_comercial),numero_identificacion=VALUES(numero_identificacion),correo=VALUES(correo),actividad_economica=VALUES(actividad_economica),telefono=VALUES(telefono),provincia=VALUES(provincia),canton=VALUES(canton),distrito=VALUES(distrito),otras_senas=VALUES(otras_senas),updated_at=CURRENT_TIMESTAMP`,
-    [req.portalUser.usuario_id,clean(receptor.nombre,160),clean(receptor.nombreComercial,160),clientType,encrypt(clientNumber),identificationHash(clientNumber),clean(receptor.correo,160).toLowerCase(),clean(receptor.actividadEconomica,12),clean(receptor.telefono,30),clean(receptor.ubicacion?.provincia,3),clean(receptor.ubicacion?.canton,3),clean(receptor.ubicacion?.distrito,3),clean(receptor.ubicacion?.otrasSenas,255)]
+    [req.portalUser.usuario_id,clean(receptor.nombre,160),clean(receptor.nombreComercial,160),clientType,encrypt(clientNumber),identificationHash(clientNumber),clean(receptor.correo,160).toLowerCase(),clean(receptor.actividadEconomica,12),clean(receptor.telefono,30),clean(receptor.ubicacion?.provincia,80),clean(receptor.ubicacion?.canton,80),clean(receptor.ubicacion?.distrito,80),clean(receptor.ubicacion?.otrasSenas,255)]
   );
   return res.status(201).json(await getSaleObject(id, req.portalUser.usuario_id));
+}
+
+
+async function updateSale(req, res) {
+  const [existingRows] = await pool.execute('SELECT estado, factura_id FROM portal_ventas WHERE id=? AND usuario_id=? LIMIT 1', [req.params.id, req.portalUser.usuario_id]);
+  if (!existingRows.length) return res.status(404).json({ error:'Venta no encontrada' });
+  const current = existingRows[0];
+  if (current.factura_id || current.estado !== 'pendiente_pago') return res.status(409).json({ error:'Solo puedes editar una venta guardada antes de iniciar el pago.' });
+
+  const receptor = req.body.receptor || {};
+  const items = normalizeItems(req.body.items);
+  const subtotal = items.reduce((a, i) => a + i.subtotal, 0);
+  const descuento = items.reduce((a, i) => a + i.descuento, 0);
+  const impuesto = items.reduce((a, i) => a + i.impuestoNeto, 0);
+  const total = items.reduce((a, i) => a + i.montoTotalLinea, 0);
+  const receptorNombre=clean(receptor.nombre,160), receptorCorreo=clean(receptor.correo,160).toLowerCase(), receptorNumero=clean(receptor.identificacion?.numero,40);
+  if (!receptorNombre || !receptorCorreo || !receptorNumero) return res.status(400).json({ error:'Completa nombre, identificación y correo del cliente.' });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(receptorCorreo)) return res.status(400).json({ error:'El correo del cliente no es válido.' });
+  if (!/^\d{8,12}$/.test(receptorNumero)) return res.status(400).json({ error:'La identificación del cliente debe contener entre 8 y 12 dígitos.' });
+  if (total <= 0) return res.status(400).json({ error:'El total de la venta debe ser mayor que cero.' });
+
+  const extra = {
+    nombreComercial: clean(receptor.nombreComercial,160), actividadEconomica: clean(receptor.actividadEconomica,6), telefono: clean(receptor.telefono,30),
+    ubicacion: compactLocation(receptor.ubicacion || {}), condicionVenta: clean(req.body.condicionVenta || '01',2),
+    detalleCondicionVenta: clean(req.body.detalleCondicionVenta || 'Contado',120), medioPago: clean(req.body.medioPago || '02',2),
+    plazoCredito: Math.max(Number(req.body.plazoCredito || 0),0), observaciones: clean(req.body.observaciones,500),
+  };
+  await pool.execute(
+    `UPDATE portal_ventas SET receptor_nombre=?, receptor_tipo_id=?, receptor_numero_id=?, receptor_correo=?, items_json=?, datos_venta_json=?, subtotal=?, descuento=?, impuesto=?, total=?, moneda=?, error_detalle=NULL WHERE id=? AND usuario_id=?`,
+    [receptorNombre, clean(receptor.identificacion?.tipo,2)||null, encrypt(receptorNumero), receptorCorreo, JSON.stringify(items), JSON.stringify(extra), subtotal, descuento, impuesto, total, clean(req.body.moneda||'CRC',3), req.params.id, req.portalUser.usuario_id]
+  );
+  return res.json(await getSaleObject(req.params.id, req.portalUser.usuario_id));
 }
 
 async function getSaleObject(id, userId) {
@@ -262,13 +310,14 @@ async function startPayment(req, res) {
   if (sale.estado === 'facturada') return res.json({ alreadyCompleted: true, facturaId: sale.facturaId });
   if (Number(sale.total) <= 0) return res.status(400).json({ error:'No se puede iniciar un pago con monto cero.' });
   const merchant = await portalMerchant(req.portalUser.usuario_id);
+  if (!merchant.bankAfiliado) return res.status(409).json({ error:'Antes de pagar, confirma la afiliación de tu negocio en BankyFinanzas desde la sección Cobros.' });
   const checkout = new URL(process.env.BANK_CHECKOUT_URL || 'https://bankyfinanzas.netlify.app/checkout');
   checkout.searchParams.set('reference', sale.referenciaPago);
   checkout.searchParams.set('amount', String(sale.total));
   checkout.searchParams.set('currency', sale.moneda);
   checkout.searchParams.set('returnUrl', `${publicAppUrl()}/?paymentReference=${encodeURIComponent(sale.referenciaPago)}`);
   checkout.searchParams.set('description', sale.items?.[0]?.detalle || 'Compra');
-  const merchantValue = clean(process.env.BANK_MERCHANT_ID || merchant.id || merchant.name, 160);
+  const merchantValue = clean(merchant.bankMerchantId || process.env.BANK_MERCHANT_ID || merchant.id || merchant.name, 160);
   const merchantParam = clean(process.env.BANK_MERCHANT_PARAM || 'merchant', 60) || 'merchant';
   if (merchantValue) {
     checkout.searchParams.set(merchantParam, merchantValue);
@@ -300,7 +349,7 @@ async function verifyBankIfConfigured(sale, payload) {
 async function buildInvoiceFromSale(saleRow, userId) {
   const [rows] = await pool.execute(
     `SELECT u.empresa, u.tipo_identificacion, u.numero_identificacion, u.correo_facturacion,
-            p.nombre_comercial, p.actividad_economica, p.telefono, p.provincia, p.canton, p.distrito, p.otras_senas, p.logo, p.logo_blanco, p.logo_posicion
+            p.nombre_comercial, p.actividad_economica, p.telefono, p.provincia, p.canton, p.distrito, p.otras_senas, p.logo, p.logo_blanco, p.logo_posicion, p.bank_merchant_id, p.bank_afiliado
      FROM portal_usuarios u LEFT JOIN portal_perfiles p ON p.usuario_id=u.id WHERE u.id=? LIMIT 1`, [userId]
   );
   const p = rows[0];
@@ -419,9 +468,9 @@ async function retryPipeline(req, res) {
 async function config(req, res) {
   return res.json({
     serviceName:'Factura Bonita',
-    bank:{ checkoutUrl:process.env.BANK_CHECKOUT_URL || 'https://bankyfinanzas.netlify.app/checkout', origin:bankOrigin(), verificationConfigured:Boolean(process.env.BANK_VERIFY_URL), confirmMode:process.env.BANK_CONFIRM_MODE || 'postmessage' },
+    bank:{ checkoutUrl:process.env.BANK_CHECKOUT_URL || 'https://bankyfinanzas.netlify.app/checkout', loginUrl:process.env.BANK_LOGIN_URL || 'https://bankyfinanzas.netlify.app/login', registerUrl:process.env.BANK_REGISTER_URL || 'https://bankyfinanzas.netlify.app/registro/negocio', origin:bankOrigin(), verificationConfigured:Boolean(process.env.BANK_VERIFY_URL), confirmMode:process.env.BANK_CONFIRM_MODE || 'postmessage', ready:false },
     invoice:{ logoPositions:['left','center','right'] }
   });
 }
 
-module.exports = { register, login, me, saveProfile, listClients, createSale, listSales, saleById, startPayment, confirmPayment, bankCallback, retryPipeline, config };
+module.exports = { register, login, me, saveProfile, saveBankProfile, listClients, createSale, updateSale, listSales, saleById, startPayment, confirmPayment, bankCallback, retryPipeline, config };

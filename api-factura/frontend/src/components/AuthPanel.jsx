@@ -32,7 +32,7 @@ export default function AuthPanel({ onReady }) {
         <label>Nombre o razón social<input name="empresa" value={form.empresa} onChange={change} maxLength="160" required /></label>
         <div className="form-grid two"><label>Tipo de identificación<select name="tipoIdentificacion" value={form.tipoIdentificacion} onChange={change}><option value="01">Persona física</option><option value="02">Persona jurídica</option><option value="03">DIMEX</option><option value="04">NITE</option></select></label><label>Número de identificación<input inputMode="numeric" name="numeroIdentificacion" value={form.numeroIdentificacion} onChange={changeDigits('numeroIdentificacion',12)} placeholder="Solo números" required /></label></div>
         <div className="form-grid two"><label>Actividad económica<input inputMode="numeric" name="actividadEconomica" value={form.actividadEconomica} onChange={changeDigits('actividadEconomica',6)} placeholder="6 dígitos" /></label><label>Teléfono<input inputMode="numeric" name="telefono" value={form.telefono} onChange={changeDigits('telefono',12)} placeholder="Ej. 88887777" /></label></div>
-        <div className="form-grid three"><label>Provincia<input inputMode="numeric" name="provincia" value={form.provincia} onChange={changeDigits('provincia',2)} /></label><label>Cantón<input inputMode="numeric" name="canton" value={form.canton} onChange={changeDigits('canton',2)} /></label><label>Distrito<input inputMode="numeric" name="distrito" value={form.distrito} onChange={changeDigits('distrito',2)} /></label></div>
+        <div className="form-grid three"><label>Provincia<input name="provincia" value={form.provincia} onChange={change} maxLength="80" placeholder="Ej. Puntarenas" /></label><label>Cantón<input name="canton" value={form.canton} onChange={change} maxLength="80" placeholder="Ej. Puntarenas" /></label><label>Distrito<input name="distrito" value={form.distrito} onChange={change} maxLength="80" placeholder="Ej. El Roble" /></label></div>
         <label>Dirección / otras señas<input name="otrasSenas" value={form.otrasSenas} onChange={change} maxLength="255" /></label>
       </>}
       <label>Correo<input type="email" name="email" value={form.email} onChange={change} required /></label>
@@ -41,6 +41,6 @@ export default function AuthPanel({ onReady }) {
       {error && <div className="alert error">{error}</div>}
       <button className="primary wide" disabled={loading}>{loading?'Procesando...':mode==='login'?'Entrar':'Crear cuenta'}</button>
     </form>
-    <button className="link-button" onClick={()=>{setMode(mode==='login'?'register':'login');setError('')}}>{mode==='login'?'¿Primera vez? Crear cuenta':'Ya tengo una cuenta'}</button>
+    <button className="link-button" onClick={()=>{setMode(mode==='login'?'register':'login');setError('')}}>{mode==='login'?'¿Primera vez? Crear cuenta':'← Volver a iniciar sesión'}</button>
   </div></section>
 }

@@ -14,8 +14,8 @@ const { calentarNavegador, obtenerEstadoBrowser, cerrarBrowser } = require('../d
 const { obtenerEstadoRenderer } = require('../document-renderer/pdfRenderer');
 
 const app = express();
-const API_VERSION = '4.6.0';
-const TEMPLATE_VERSION = 'factura-v44-react-banky-guia-v23';
+const API_VERSION = '4.7.0';
+const TEMPLATE_VERSION = 'factura-v44-react-logo-posicion-final-v24';
 
 const allowedOrigins = new Set(
   (process.env.FRONTEND_URL || '')

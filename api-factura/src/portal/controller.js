@@ -139,12 +139,27 @@ async function saveProfile(req, res) {
   const logoBlanco = req.files?.logoBlanco?.[0] ? dataUrlFromFile(req.files.logoBlanco[0]) : null;
   const [current] = await pool.execute('SELECT logo, logo_blanco FROM portal_perfiles WHERE usuario_id = ?', [req.portalUser.usuario_id]);
   const existing = current[0] || {};
+  const effectiveLogo = logo || existing.logo || null;
+  const effectiveWhiteLogo = logoBlanco || existing.logo_blanco || null;
+
   await pool.execute(
     `INSERT INTO portal_perfiles (usuario_id, logo, logo_blanco, logo_posicion)
      VALUES (?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE logo=VALUES(logo), logo_blanco=VALUES(logo_blanco), logo_posicion=VALUES(logo_posicion)`,
-    [req.portalUser.usuario_id, logo || existing.logo || null, logoBlanco || existing.logo_blanco || null, position]
+    [req.portalUser.usuario_id, effectiveLogo, effectiveWhiteLogo, position]
   );
+
+  // La identidad visual pertenece a la cuenta del negocio. Si el usuario cambia
+  // el logo o su posición, las facturas ya generadas desde este portal deben
+  // reflejar la configuración vigente al volver a abrir su PDF.
+  await pool.execute(
+    `UPDATE facturas f
+       INNER JOIN portal_ventas v ON v.factura_id = f.id
+       SET f.emisor_logo = ?, f.emisor_logo_blanco = ?, f.emisor_logo_posicion = ?
+     WHERE v.usuario_id = ?`,
+    [effectiveLogo, effectiveWhiteLogo, position, req.portalUser.usuario_id]
+  );
+
   return me(req, res);
 }
 

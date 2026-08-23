@@ -1,6 +1,6 @@
 {
   "name": "api-factura",
-  "version": "4.6.0",
+  "version": "4.7.0",
   "description": "Factura Bonita: portal React con venta persistente, BankyFinanzas, facturación automática, guía de uso y PDF personalizable.",
   "main": "src/server.js",
   "scripts": {

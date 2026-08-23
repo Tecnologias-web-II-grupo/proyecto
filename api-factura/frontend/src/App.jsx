@@ -46,7 +46,7 @@ export default function App(){
   return <div className="app-shell">
     <header className="site-header">
       <div className="brand-mark">FB</div>
-      <div className="brand-copy-ui"><b>Factura Bonita</b><span>Comprobantes claros para tu negocio</span></div>
+      <div className="brand-copy-ui"><b>Factura Bonita</b><span>Facturas claras para tus ventas</span></div>
       {me&&<nav className="customer-nav">
         <button className={tab==='sale'?'active':''} onClick={()=>setTab('sale')}>Nueva venta</button>
         <button className={tab==='history'?'active':''} onClick={()=>setTab('history')}>Mis facturas</button>
@@ -58,10 +58,10 @@ export default function App(){
     {!me?
       <main className="landing">
         <section className="hero-copy">
-          <span className="eyebrow">FACTURACIÓN PARA TU NEGOCIO</span>
-          <h1>Vende con tranquilidad. Tu factura queda lista al finalizar el pago.</h1>
-          <p>Crea tu cuenta, registra una venta y personaliza el comprobante con la identidad de tu negocio. El pago se completa en una ventana segura y, al aprobarse, tu factura queda disponible para verla o guardarla.</p>
-          <div className="benefits"><span>Cuenta independiente</span><span>Pago antes de facturar</span><span>Logo personalizado</span></div>
+          <span className="eyebrow">FACTURA BONITA</span>
+          <h1>Vende, cobra y entrega una factura clara.</h1>
+          <p>Registra tu negocio, prepara una venta y cobra de forma segura. Cuando el pago queda aprobado, la factura se genera con los datos de la operación y queda lista para verla o guardarla.</p>
+          <div className="benefits"><span>Tu negocio y tus clientes</span><span>Factura después del pago</span><span>Logo a tu manera</span></div>
         </section>
         <AuthPanel onReady={load}/>
       </main>
@@ -75,6 +75,6 @@ export default function App(){
         {tab==='brand'&&<LogoDesigner me={me} onSaved={setMe}/>} 
       </main>
     }
-    <footer className="site-footer"><span>Factura Bonita</span><span>Comprobantes para tus ventas</span></footer>
+    <footer className="site-footer"><div><strong>Factura Bonita</strong><span>Una forma simple de entregar tus facturas.</span></div><div className="footer-meta"><span>Ventas</span><span>Pagos</span><span>Facturas</span></div></footer>
   </div>
 }

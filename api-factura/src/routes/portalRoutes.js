@@ -17,6 +17,7 @@ router.post('/auth/login', c.login);
 router.post('/pagos/banco/callback', c.bankCallback);
 router.get('/me', requirePortalAuth, c.me);
 router.put('/perfil', requirePortalAuth, upload, c.saveProfile);
+router.get('/clientes', requirePortalAuth, c.listClients);
 router.post('/ventas', requirePortalAuth, c.createSale);
 router.get('/ventas', requirePortalAuth, c.listSales);
 router.get('/ventas/:id', requirePortalAuth, c.saleById);

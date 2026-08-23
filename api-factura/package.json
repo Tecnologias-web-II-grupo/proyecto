@@ -1,7 +1,7 @@
 {
   "name": "api-factura",
-  "version": "4.9.3",
-  "description": "Factura Bonita: portal de venta, pago BankyFinanzas, factura PDF y entrega por correo; incluye entrega por correo y ecosistema externo activable.",
+  "version": "4.9.4",
+  "description": "Factura Bonita: portal de venta, pago BankyFinanzas, factura PDF y entrega directa por correo; ecosistema externo activable.",
   "main": "src/server.js",
   "scripts": {
     "test": "node --test --experimental-test-isolation=none",

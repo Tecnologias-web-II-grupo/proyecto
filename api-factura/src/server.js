@@ -14,8 +14,8 @@ const { calentarNavegador, obtenerEstadoBrowser, cerrarBrowser } = require('../d
 const { obtenerEstadoRenderer } = require('../document-renderer/pdfRenderer');
 
 const app = express();
-const API_VERSION = '4.2.0';
-const TEMPLATE_VERSION = 'factura-v44-react-portal-comercial-v19';
+const API_VERSION = '4.3.0';
+const TEMPLATE_VERSION = 'factura-v44-react-bank-onboarding-v20';
 
 const allowedOrigins = new Set(
   (process.env.FRONTEND_URL || '')

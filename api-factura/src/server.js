@@ -14,8 +14,8 @@ const { calentarNavegador, obtenerEstadoBrowser, cerrarBrowser } = require('../d
 const { obtenerEstadoRenderer } = require('../document-renderer/pdfRenderer');
 
 const app = express();
-const API_VERSION = '4.0.0';
-const TEMPLATE_VERSION = 'factura-v44-react-portal-integrado-v17';
+const API_VERSION = '4.1.0';
+const TEMPLATE_VERSION = 'factura-v44-react-portal-comercial-v18';
 
 const allowedOrigins = new Set(
   (process.env.FRONTEND_URL || '')
@@ -40,7 +40,7 @@ app.use((req, res, next) => {
   if (origin && isAllowedOrigin(origin)) {
     res.setHeader('Access-Control-Allow-Origin', String(process.env.CORS_ALLOW_ALL || 'true').toLowerCase() !== 'false' ? '*' : origin);
     res.setHeader('Vary', 'Origin');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept, Authorization, X-Api-Key, X-Request-Id');
     res.setHeader('Access-Control-Expose-Headers', 'Retry-After, X-Idempotent-Replay');
     res.setHeader('Access-Control-Max-Age', '86400');

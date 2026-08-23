@@ -19,6 +19,30 @@ function bankOrigin() {
 function publicAppUrl() { return process.env.PUBLIC_APP_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`; }
 function publicApiUrl() { return process.env.PUBLIC_API_URL || process.env.RENDER_EXTERNAL_URL || `http://127.0.0.1:${process.env.PORT || 3000}`; }
 
+function taxCode(rate) {
+  const n = Number(rate || 0);
+  if (n === 13) return '08';
+  if (n === 4) return '03';
+  if (n === 2) return '02';
+  if (n === 1) return '01';
+  return '01';
+}
+function compactLocation(value = {}) {
+  const out = {
+    provincia: clean(value.provincia, 3), canton: clean(value.canton, 3), distrito: clean(value.distrito, 3), otrasSenas: clean(value.otrasSenas, 250),
+  };
+  return Object.values(out).some(Boolean) ? out : null;
+}
+async function portalMerchant(userId) {
+  const [rows] = await pool.execute('SELECT empresa, tipo_identificacion, numero_identificacion FROM portal_usuarios WHERE id=? LIMIT 1', [userId]);
+  const row = rows[0] || {};
+  return {
+    name: clean(row.empresa, 160),
+    id: row.numero_identificacion ? decrypt(row.numero_identificacion) : '',
+    type: clean(row.tipo_identificacion, 2),
+  };
+}
+
 async function register(req, res) {
   await ensurePortalSchema();
   const nombre = clean(req.body.nombre, 120);
@@ -99,21 +123,41 @@ async function saveProfile(req, res) {
 
 function normalizeItems(items) {
   if (!Array.isArray(items) || !items.length) throw new Error('Agrega al menos un producto o servicio.');
-  return items.slice(0, 20).map((item, index) => {
+  return items.slice(0, 50).map((item, index) => {
     const cantidad = Math.max(Number(item.cantidad || 0), 0);
     const precio = Math.max(Number(item.precioUnitario || 0), 0);
     const descuento = Math.max(Number(item.descuento || 0), 0);
     const tarifa = Math.max(Number(item.impuestoTarifa || 0), 0);
-    if (!clean(item.detalle, 255) || cantidad <= 0) throw new Error(`La línea ${index + 1} no es válida.`);
+    const detalle = clean(item.detalle, 255);
+    const cabys = clean(item.codigoCabys, 13);
+    if (!detalle || cantidad <= 0) throw new Error(`La línea ${index + 1} no es válida.`);
+    if (!cabys || cabys.length !== 13) throw new Error(`La línea ${index + 1} requiere un código CAByS de 13 dígitos.`);
     const bruto = cantidad * precio;
     const subtotal = Math.max(bruto - descuento, 0);
-    const impuesto = subtotal * tarifa / 100;
+    const impuestoMonto = subtotal * tarifa / 100;
+    const codigoComercial = clean(item.codigoComercial, 50);
+    const impuesto = { codigo:'01', codigoTarifaIVA:clean(item.codigoTarifaIVA,2) || taxCode(tarifa), tarifa, factorCalculoIVA:1, monto:Number(impuestoMonto.toFixed(2)) };
     return {
       numeroLinea: index + 1,
-      codigoCabys: clean(item.codigoCabys, 13) || null,
-      detalle: clean(item.detalle, 255), cantidad, unidadMedida: clean(item.unidadMedida || 'Sp', 20),
-      precioUnitario: Number(precio.toFixed(2)), descuento: Number(descuento.toFixed(2)), impuestoTarifa: tarifa,
-      subtotal: Number(subtotal.toFixed(2)), montoTotalLinea: Number((subtotal + impuesto).toFixed(2)),
+      tipoItem: item.tipoItem === 'mercancia' ? 'mercancia' : 'servicio',
+      codigoCabys: cabys,
+      codigosComerciales: codigoComercial ? [{ tipo:'04', codigo:codigoComercial }] : [],
+      cantidad,
+      unidadMedida: clean(item.unidadMedida || 'Sp', 20),
+      unidadMedidaComercial: clean(item.unidadMedidaComercial || 'Unidad', 40),
+      tipoTransaccion: clean(item.tipoTransaccion || '01', 2),
+      detalle,
+      precioUnitario: Number(precio.toFixed(2)),
+      montoTotal: Number(bruto.toFixed(2)),
+      descuento: Number(descuento.toFixed(2)),
+      descuentos: descuento > 0 ? [{ monto:Number(descuento.toFixed(2)), codigo:'01', naturaleza:'Descuento aplicado a la venta' }] : [],
+      subtotal: Number(subtotal.toFixed(2)),
+      baseImponible: Number(subtotal.toFixed(2)),
+      impuestoTarifa: tarifa,
+      impuesto: { tarifa },
+      impuestos: [impuesto],
+      impuestoNeto: Number(impuestoMonto.toFixed(2)),
+      montoTotalLinea: Number((subtotal + impuestoMonto).toFixed(2)),
     };
   });
 }
@@ -123,18 +167,25 @@ async function createSale(req, res) {
   const items = normalizeItems(req.body.items);
   const subtotal = items.reduce((a, i) => a + i.subtotal, 0);
   const descuento = items.reduce((a, i) => a + i.descuento, 0);
-  const impuesto = items.reduce((a, i) => a + (i.montoTotalLinea - i.subtotal), 0);
+  const impuesto = items.reduce((a, i) => a + i.impuestoNeto, 0);
   const total = items.reduce((a, i) => a + i.montoTotalLinea, 0);
-  if (!clean(receptor.nombre,160) || !clean(receptor.correo,160)) return res.status(400).json({ error: 'Completa nombre y correo del cliente.' });
+  if (!clean(receptor.nombre,160) || !clean(receptor.correo,160) || !clean(receptor.identificacion?.numero,40)) return res.status(400).json({ error: 'Completa nombre, identificación y correo del cliente.' });
+  if (total <= 0) return res.status(400).json({ error:'El total de la venta debe ser mayor que cero.' });
   const id = `V-${randomUUID().slice(0,8).toUpperCase()}`;
   const reference = `BANK-${id}`;
+  const extra = {
+    nombreComercial: clean(receptor.nombreComercial,160), actividadEconomica: clean(receptor.actividadEconomica,6), telefono: clean(receptor.telefono,30),
+    ubicacion: compactLocation(receptor.ubicacion || {}), condicionVenta: clean(req.body.condicionVenta || '01',2),
+    detalleCondicionVenta: clean(req.body.detalleCondicionVenta || 'Contado',120), medioPago: clean(req.body.medioPago || '02',2),
+    plazoCredito: Math.max(Number(req.body.plazoCredito || 0),0), observaciones: clean(req.body.observaciones,500),
+  };
   await pool.execute(
     `INSERT INTO portal_ventas (id, usuario_id, receptor_nombre, receptor_tipo_id, receptor_numero_id, receptor_correo, items_json,
-      subtotal, descuento, impuesto, total, moneda, estado, referencia_pago)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendiente_pago', ?)`,
+      subtotal, descuento, impuesto, total, moneda, estado, referencia_pago, datos_venta_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendiente_pago', ?, ?)`,
     [id, req.portalUser.usuario_id, clean(receptor.nombre,160), clean(receptor.identificacion?.tipo,2) || null,
       receptor.identificacion?.numero ? encrypt(clean(receptor.identificacion.numero,40)) : null, clean(receptor.correo,160).toLowerCase(), JSON.stringify(items),
-      subtotal, descuento, impuesto, total, clean(req.body.moneda || 'CRC',3), reference]
+      subtotal, descuento, impuesto, total, clean(req.body.moneda || 'CRC',3), reference, JSON.stringify(extra)]
   );
   return res.status(201).json(await getSaleObject(id, req.portalUser.usuario_id));
 }
@@ -143,11 +194,13 @@ async function getSaleObject(id, userId) {
   const [rows] = await pool.execute('SELECT * FROM portal_ventas WHERE id = ? AND usuario_id = ? LIMIT 1', [id, userId]);
   if (!rows.length) return null;
   const v = rows[0];
+  const extra = parseJson(v.datos_venta_json, {});
   const [steps] = await pool.execute('SELECT servicio, endpoint, estado, http_status, mensaje, created_at FROM portal_integraciones WHERE venta_id = ? ORDER BY id', [id]);
   return {
     id: v.id, estado: v.estado, moneda: v.moneda, subtotal: Number(v.subtotal), descuento: Number(v.descuento), impuesto: Number(v.impuesto), total: Number(v.total),
     referenciaPago: v.referencia_pago, facturaId: v.factura_id || null, errorDetalle: v.error_detalle || null,
-    receptor: { nombre: v.receptor_nombre, correo: v.receptor_correo, identificacion: v.receptor_numero_id ? { tipo: v.receptor_tipo_id, numero: decrypt(v.receptor_numero_id) } : null },
+    receptor: { nombre: v.receptor_nombre, nombreComercial:extra.nombreComercial||'', actividadEconomica:extra.actividadEconomica||'', telefono:extra.telefono||'', ubicacion:extra.ubicacion||null, correo: v.receptor_correo, identificacion: v.receptor_numero_id ? { tipo: v.receptor_tipo_id, numero: decrypt(v.receptor_numero_id) } : null },
+    condicionVenta:extra.condicionVenta||'01', detalleCondicionVenta:extra.detalleCondicionVenta||'', medioPago:extra.medioPago||'02', plazoCredito:Number(extra.plazoCredito||0),
     items: parseJson(v.items_json, []), integraciones: steps, createdAt: v.created_at, updatedAt: v.updated_at,
   };
 }
@@ -169,11 +222,24 @@ async function startPayment(req, res) {
   const sale = await getSaleObject(req.params.id, req.portalUser.usuario_id);
   if (!sale) return res.status(404).json({ error: 'Venta no encontrada' });
   if (sale.estado === 'facturada') return res.json({ alreadyCompleted: true, facturaId: sale.facturaId });
+  if (Number(sale.total) <= 0) return res.status(400).json({ error:'No se puede iniciar un pago con monto cero.' });
+  const merchant = await portalMerchant(req.portalUser.usuario_id);
   const checkout = new URL(process.env.BANK_CHECKOUT_URL || 'https://bankyfinanzas.netlify.app/checkout');
   checkout.searchParams.set('reference', sale.referenciaPago);
   checkout.searchParams.set('amount', String(sale.total));
   checkout.searchParams.set('currency', sale.moneda);
   checkout.searchParams.set('returnUrl', `${publicAppUrl()}/?paymentReference=${encodeURIComponent(sale.referenciaPago)}`);
+  checkout.searchParams.set('description', sale.items?.[0]?.detalle || 'Compra');
+  const merchantValue = clean(process.env.BANK_MERCHANT_ID || merchant.id || merchant.name, 160);
+  const merchantParam = clean(process.env.BANK_MERCHANT_PARAM || 'merchant', 60) || 'merchant';
+  if (merchantValue) {
+    checkout.searchParams.set(merchantParam, merchantValue);
+    // Compatibilidad con implementaciones estudiantiles que nombren el comercio de forma distinta.
+    if (String(process.env.BANK_MERCHANT_ALIASES || 'true').toLowerCase() !== 'false') {
+      for (const alias of ['merchant','merchantId','commerce','comercio']) if (alias !== merchantParam) checkout.searchParams.set(alias, merchantValue);
+    }
+  }
+  if (merchant.name) checkout.searchParams.set('merchantName', merchant.name);
   await pool.execute("UPDATE portal_ventas SET estado='esperando_banco' WHERE id=?", [sale.id]);
   return res.json({ checkoutUrl: checkout.toString(), referencia: sale.referenciaPago, monto: sale.total, moneda: sale.moneda, expectedOrigin: bankOrigin() });
 }
@@ -201,31 +267,40 @@ async function buildInvoiceFromSale(saleRow, userId) {
   );
   const p = rows[0];
   const items = parseJson(saleRow.items_json, []);
-  const totalGravado = items.filter((i)=>Number(i.impuestoTarifa||0)>0).reduce((a,i)=>a+Number(i.subtotal||0),0);
-  const totalExento = items.filter((i)=>Number(i.impuestoTarifa||0)===0).reduce((a,i)=>a+Number(i.subtotal||0),0);
+  const extra = parseJson(saleRow.datos_venta_json, {});
+  const isService=(i)=>i.tipoItem!=='mercancia';
+  const gravado=(i)=>Number(i.impuestoTarifa||0)>0;
+  const sum=(arr)=>Number(arr.reduce((a,i)=>a+Number(i.subtotal||0),0).toFixed(2));
+  const servGrav=sum(items.filter(i=>isService(i)&&gravado(i))), servEx=sum(items.filter(i=>isService(i)&&!gravado(i)));
+  const mercGrav=sum(items.filter(i=>!isService(i)&&gravado(i))), mercEx=sum(items.filter(i=>!isService(i)&&!gravado(i)));
+  const totalGrav=Number((servGrav+mercGrav).toFixed(2)), totalEx=Number((servEx+mercEx).toFixed(2));
+  const receptorUb=extra.ubicacion || null;
   return {
-    origen: 'portal-api-factura', referenciaExterna: `venta:${saleRow.id}`, fecha: new Date().toISOString(), moneda: saleRow.moneda,
-    condicionVenta: '01', medioPago: '02',
-    emisor: {
-      nombre: p.empresa, nombreComercial: p.nombre_comercial || p.empresa,
-      identificacion: { tipo: p.tipo_identificacion, numero: decrypt(p.numero_identificacion) },
-      correo: p.correo_facturacion, actividadEconomica: p.actividad_economica || undefined,
-      telefono: p.telefono ? { codigoPais:'506', numero:String(p.telefono).replace(/\D/g,'') } : undefined,
-      ubicacion: (p.provincia || p.canton || p.distrito || p.otras_senas) ? { provincia:p.provincia||'', canton:p.canton||'', distrito:p.distrito||'', otrasSenas:p.otras_senas||'' } : undefined,
-      logoUrl: p.logo || null, logoUrlBlanco: p.logo_blanco || null, logoPosicion: p.logo_posicion || 'left',
+    perfilValidacion:'v44-visual', origen:'portal-api-factura', referenciaExterna:`venta:${saleRow.id}`, fecha:new Date().toISOString(), moneda:saleRow.moneda,
+    condicionVenta:extra.condicionVenta||'01', detalleCondicionVenta:extra.detalleCondicionVenta||'Contado', medioPago:extra.medioPago||'02', plazoCredito:Number(extra.plazoCredito||0),
+    proveedorSistemas:{ nombre:clean(process.env.SYSTEM_PROVIDER_NAME||'API Factura',80), identificacion:clean(process.env.SYSTEM_PROVIDER_ID||'3-101-999999',40) },
+    emisor:{
+      nombre:p.empresa, nombreComercial:p.nombre_comercial||p.empresa, actividadEconomica:p.actividad_economica||'000000',
+      identificacion:{tipo:p.tipo_identificacion,numero:decrypt(p.numero_identificacion)}, correo:p.correo_facturacion,
+      telefono:p.telefono?{codigoPais:'506',numero:String(p.telefono).replace(/\D/g,'')}:undefined,
+      ubicacion:(p.provincia||p.canton||p.distrito||p.otras_senas)?{provincia:p.provincia||'',canton:p.canton||'',distrito:p.distrito||'',otrasSenas:p.otras_senas||''}:undefined,
+      logoUrl:p.logo||null,logoUrlBlanco:p.logo_blanco||null,logoPosicion:p.logo_posicion||'left'
     },
-    receptor: {
-      nombre: saleRow.receptor_nombre,
-      identificacion: saleRow.receptor_numero_id ? { tipo: saleRow.receptor_tipo_id, numero: decrypt(saleRow.receptor_numero_id) } : undefined,
-      correo: saleRow.receptor_correo,
+    receptor:{
+      nombre:saleRow.receptor_nombre,nombreComercial:extra.nombreComercial||undefined,actividadEconomica:extra.actividadEconomica||undefined,
+      identificacion:saleRow.receptor_numero_id?{tipo:saleRow.receptor_tipo_id,numero:decrypt(saleRow.receptor_numero_id)}:undefined,correo:saleRow.receptor_correo,
+      telefono:extra.telefono?{codigoPais:'506',numero:String(extra.telefono).replace(/\D/g,'')}:undefined,ubicacion:receptorUb||undefined
     },
-    items: items.map((i)=>({ ...i, impuesto: { tarifa:Number(i.impuestoTarifa||0) } })),
-    totales: {
-      totalGravado:Number(totalGravado.toFixed(2)), totalExento:Number(totalExento.toFixed(2)), totalDescuentos:Number(saleRow.descuento),
-      totalImpuesto:Number(saleRow.impuesto), totalComprobante:Number(saleRow.total), totalVenta:Number((Number(saleRow.subtotal)+Number(saleRow.descuento)).toFixed(2)),
-      totalVentaNeta:Number(saleRow.subtotal), mediosPago:[{ tipo:'02', total:Number(saleRow.total) }]
+    items,
+    otrosCargos:[],
+    totales:{
+      totalServGravados:servGrav,totalServExentos:servEx,totalServExonerados:0,totalServNoSujetos:0,
+      totalMercanciasGravadas:mercGrav,totalMercanciasExentas:mercEx,totalMercanciasExoneradas:0,totalMercanciasNoSujetas:0,
+      totalGravado:totalGrav,totalExento:totalEx,totalExonerado:0,totalNoSujeto:0,
+      totalVenta:Number((Number(saleRow.subtotal)+Number(saleRow.descuento)).toFixed(2)),totalDescuentos:Number(saleRow.descuento),totalVentaNeta:Number(saleRow.subtotal),
+      totalImpuesto:Number(saleRow.impuesto),totalIVADevuelto:0,totalOtrosCargos:0,totalComprobante:Number(saleRow.total),mediosPago:[{tipo:extra.medioPago||'02',total:Number(saleRow.total)}]
     },
-    referencias: [], otrosCargos: [],
+    referencias:[],otros:{observaciones:extra.observaciones||'',informacionAdicional:''}
   };
 }
 
@@ -305,9 +380,8 @@ async function retryPipeline(req, res) {
 
 async function config(req, res) {
   return res.json({
-    serviceName:'API Factura',
+    serviceName:'Factura Bonita',
     bank:{ checkoutUrl:process.env.BANK_CHECKOUT_URL || 'https://bankyfinanzas.netlify.app/checkout', origin:bankOrigin(), verificationConfigured:Boolean(process.env.BANK_VERIFY_URL), confirmMode:process.env.BANK_CONFIRM_MODE || 'postmessage' },
-    pipeline:parsePipeline().map((x)=>({ name:x.name, url:x.url })),
     invoice:{ logoPositions:['left','center','right'] }
   });
 }

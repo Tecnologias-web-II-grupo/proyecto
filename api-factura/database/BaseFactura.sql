@@ -376,6 +376,7 @@ CREATE TABLE portal_ventas (
   receptor_numero_id VARBINARY(255) NULL,
   receptor_correo VARCHAR(160) NOT NULL,
   items_json LONGTEXT NOT NULL,
+  datos_venta_json LONGTEXT NULL,
   subtotal DECIMAL(12,2) NOT NULL DEFAULT 0,
   descuento DECIMAL(12,2) NOT NULL DEFAULT 0,
   impuesto DECIMAL(12,2) NOT NULL DEFAULT 0,

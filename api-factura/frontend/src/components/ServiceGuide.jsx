@@ -4,8 +4,9 @@ const steps=[
   ['1','Crea tu cuenta','Registra tu negocio una sola vez. Esos datos se reutilizan como emisor en tus facturas.'],
   ['2','Prepara la venta','Selecciona o registra al cliente, agrega los conceptos y revisa el total antes de guardar.'],
   ['3','Guarda la venta','La venta queda pendiente y puedes volver a ella sin perder los datos.'],
-  ['4','Realiza el cobro','Factura Bonita abre el servicio de pago conectado. La factura no se crea hasta que el pago sea aprobado.'],
-  ['5','Recibe tu factura','Cuando el pago se confirma, la factura se genera automáticamente y puedes verla o guardar el PDF.']
+  ['4','Realiza el cobro','Factura Bonita abre el servicio de pago conectado y conserva el resultado aprobado.'],
+  ['5','Procesa los documentos','Después del pago se valida la firma, se obtiene la factura electrónica y se espera el acuse de Tributación.'],
+  ['6','Entrega al cliente','Cuando todo está aceptado, el cliente recibe por correo la factura visual, la factura electrónica y el acuse.']
 ];
 
 export default function ServiceGuide({onBack,loggedIn=false}){
@@ -14,7 +15,7 @@ export default function ServiceGuide({onBack,loggedIn=false}){
       <div>
         <span className="eyebrow">CÓMO FUNCIONA</span>
         <h2>De la venta a la factura, paso a paso</h2>
-        <p className="muted">Factura Bonita conserva los datos de la venta y genera el comprobante únicamente cuando el cobro queda aprobado.</p>
+        <p className="muted">Factura Bonita conserva la venta, registra el pago y coordina los servicios necesarios antes de entregar los documentos al cliente.</p>
       </div>
       {onBack&&<button type="button" className="back-button" onClick={onBack}>← Volver</button>}
     </div>
@@ -42,9 +43,9 @@ export default function ServiceGuide({onBack,loggedIn=false}){
         <h3>Qué sucede después del pago</h3>
         <ul>
           <li>El pago se valida con el servicio conectado.</li>
-          <li>La venta cambia a pagada.</li>
-          <li>Se genera el número de factura.</li>
-          <li>Puedes verla en pantalla o guardar el PDF.</li>
+          <li>La venta cambia a pagada y comienza el procesamiento documental.</li>
+          <li>Se valida firma digital, factura electrónica y Tributación.</li>
+          <li>Al recibir el acuse, se entregan los tres documentos al correo del cliente.</li>
         </ul>
       </article>
       <article className="guide-card">

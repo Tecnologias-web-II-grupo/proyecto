@@ -17,10 +17,11 @@ function endpointLabel() {
 }
 
 async function record(ventaId, estado, mensaje, response=null) {
+  const safeMessage = mensaje == null ? null : String(mensaje).slice(0, 12000);
   await pool.execute(
     `INSERT INTO portal_integraciones (venta_id, servicio, endpoint, estado, mensaje, response_json)
      VALUES (?, 'entrega_correo', ?, ?, ?, ?)`,
-    [ventaId, endpointLabel() || null, estado, mensaje || null, response ? JSON.stringify(response) : null]
+    [ventaId, endpointLabel() || null, estado, safeMessage, response ? JSON.stringify(response) : null]
   );
 }
 
@@ -108,7 +109,7 @@ async function sendWithFormAction(payload) {
     signal:AbortSignal.timeout(Number(env('EMAIL_DELIVERY_TIMEOUT_MS','25000')))
   });
   const text = await response.text(); let result=text; try{result=text?JSON.parse(text):null}catch{}
-  if (!response.ok) throw new Error(`El servicio Form Action respondió HTTP ${response.status}: ${typeof result==='string'?result:JSON.stringify(result)}`);
+  if (!response.ok) throw new Error(`El servicio de entrega respondió HTTP ${response.status}.`);
 
   // FormSubmit puede requerir una activación inicial del correo destinatario.
   const message = String(result?.message || result?.Message || '').toLowerCase();

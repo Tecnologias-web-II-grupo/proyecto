@@ -462,8 +462,7 @@ async function processPaidSale(saleId) {
   try {
     const invoiceDraft = await buildInvoiceFromSale(row, row.usuario_id);
 
-    // En modo de prueba solo validamos Banco -> Factura Bonita -> correo.
-    // Cuando ECOSYSTEM_ENABLED=true se activa Firma Digital -> Facturación Electrónica -> Tributación.
+    // El flujo externo puede activarse cuando los servicios asociados estén disponibles.
     if (ecosystemEnabled) {
       await pool.execute("UPDATE portal_ventas SET estado='validando_firma', error_detalle=NULL WHERE id=?", [saleId]);
       await validarFirmaDigital({ ventaId:saleId, emisor:invoiceDraft.emisor, venta:row });
@@ -490,8 +489,7 @@ async function processPaidSale(saleId) {
     const pdfUrl = `${publicAppUrl()}/api/documentos/facturas/${encodeURIComponent(facturaId)}?formato=pdf&plantilla=auto`;
 
     if (!ecosystemEnabled) {
-      // Prueba temporal: no esperamos endpoints de otros grupos. Si Banky aprueba,
-      // generamos el PDF y lo enviamos directamente al correo indicado en la venta.
+      // Con el flujo externo desactivado, se completa la entrega de la factura visual por correo.
       await pool.execute("UPDATE portal_ventas SET estado='preparando_entrega' WHERE id=?", [saleId]);
       await entregarFacturaVisual({
         ventaId:saleId, to:row.receptor_correo, clienteNombre:row.receptor_nombre, facturaId, pdfUrl
@@ -526,8 +524,17 @@ async function processPaidSale(saleId) {
     await pool.execute("UPDATE portal_ventas SET estado='entregada', error_detalle=NULL WHERE id=?", [saleId]);
     return facturaId;
   } catch (error) {
-    await pool.execute("UPDATE portal_ventas SET estado='procesamiento_fallido', error_detalle=? WHERE id=?", [error.message, saleId]);
-    throw error;
+    console.error('[portal] No se pudo completar la entrega de la venta', saleId, error);
+    let publicMessage = 'No fue posible completar la entrega de la factura. Puedes reintentar el procesamiento.';
+    if (error?.code === 'EMAIL_ACTIVATION_REQUIRED') {
+      publicMessage = 'El correo de entrega requiere una confirmación inicial. Revisa la bandeja de entrada y vuelve a intentarlo.';
+    } else if (error?.code === 'EMAIL_NOT_CONFIGURED') {
+      publicMessage = 'El servicio de entrega por correo aún no está disponible.';
+    }
+    await pool.execute("UPDATE portal_ventas SET estado='procesamiento_fallido', error_detalle=? WHERE id=?", [publicMessage, saleId]);
+    const wrapped = new Error(publicMessage);
+    wrapped.code = error?.code || 'DELIVERY_FAILED';
+    throw wrapped;
   }
 }
 

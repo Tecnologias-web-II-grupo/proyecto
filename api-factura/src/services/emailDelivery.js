@@ -1,18 +1,24 @@
+const tls = require('tls');
 const pool = require('../db/database');
 
 function env(name, fallback='') { return String(process.env[name] || fallback).trim(); }
-function directProvider() { return env('DIRECT_EMAIL_PROVIDER','formsubmit').toLowerCase(); }
-function formActionTemplate() { return env('FORM_ACTION_URL_TEMPLATE','https://formsubmit.co/ajax/{email}'); }
+function directProvider() { return env('DIRECT_EMAIL_PROVIDER','smtp').toLowerCase(); }
+
+function smtpConfigured() {
+  return Boolean(env('SMTP_HOST') && env('SMTP_USER') && env('SMTP_PASS'));
+}
+
 function configured() {
   if (env('EMAIL_DELIVERY_URL')) return true;
   if (directProvider() === 'resend') return Boolean(env('RESEND_API_KEY'));
-  if (directProvider() === 'formsubmit') return Boolean(formActionTemplate());
+  if (directProvider() === 'smtp') return smtpConfigured();
   return false;
 }
+
 function endpointLabel() {
   if (env('EMAIL_DELIVERY_URL')) return env('EMAIL_DELIVERY_URL');
   if (directProvider() === 'resend') return env('RESEND_API_KEY') ? 'https://api.resend.com/emails' : '';
-  if (directProvider() === 'formsubmit') return formActionTemplate();
+  if (directProvider() === 'smtp') return smtpConfigured() ? `${env('SMTP_HOST')}:${env('SMTP_PORT','465')}` : '';
   return '';
 }
 
@@ -73,67 +79,120 @@ async function sendWithResend(payload) {
     signal:AbortSignal.timeout(Number(env('EMAIL_DELIVERY_TIMEOUT_MS','25000')))
   });
   const text = await response.text(); let result=text; try{result=text?JSON.parse(text):null}catch{}
-  if (!response.ok) throw new Error(`Resend respondió HTTP ${response.status}: ${typeof result==='string'?result:JSON.stringify(result)}`);
+  if (!response.ok) throw new Error(`Resend respondió HTTP ${response.status}.`);
   return result;
 }
 
-async function sendWithFormAction(payload) {
-  const recipient = String(payload.to || '').trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) throw new Error('El correo del cliente no tiene un formato válido.');
-
-  const template = formActionTemplate();
-  if (!template || !template.includes('{email}')) {
-    throw new Error('FORM_ACTION_URL_TEMPLATE debe incluir {email}.');
-  }
-
-  const endpoint = template.replace('{email}', encodeURIComponent(recipient));
-  const form = new FormData();
-  form.append('_subject', payload.subject || `Factura ${payload.invoiceId || ''}`);
-  form.append('_captcha', 'false');
-  form.append('_template', 'table');
-  form.append('cliente', payload.customerName || 'Cliente');
-  form.append('factura', payload.invoiceId || '');
-  form.append('mensaje', payload.message || 'Adjuntamos los documentos de su compra.');
-
-  for (const attachment of payload.attachments || []) {
-    if (!attachment?.contentBase64 || !attachment?.filename) continue;
-    const bytes = Buffer.from(attachment.contentBase64, 'base64');
-    const blob = new Blob([bytes], { type: attachment.contentType || 'application/octet-stream' });
-    form.append('attachment', blob, attachment.filename);
-  }
-
-  const response = await fetch(endpoint, {
-    method:'POST',
-    headers:{ Accept:'application/json' },
-    body:form,
-    signal:AbortSignal.timeout(Number(env('EMAIL_DELIVERY_TIMEOUT_MS','25000')))
+function smtpRead(socket, timeoutMs=15000) {
+  return new Promise((resolve, reject) => {
+    let buffer = '';
+    const timer = setTimeout(() => cleanup(new Error('Tiempo de espera agotado al comunicarse con el servidor de correo.')), timeoutMs);
+    const onData = chunk => {
+      buffer += chunk.toString('utf8');
+      const lines = buffer.split(/\r?\n/).filter(Boolean);
+      const last = lines[lines.length - 1] || '';
+      if (/^\d{3} /.test(last)) cleanup(null, buffer);
+    };
+    const onError = err => cleanup(err);
+    function cleanup(err, value) {
+      clearTimeout(timer); socket.off('data', onData); socket.off('error', onError);
+      err ? reject(err) : resolve(value);
+    }
+    socket.on('data', onData); socket.on('error', onError);
   });
-  const text = await response.text(); let result=text; try{result=text?JSON.parse(text):null}catch{}
-  if (!response.ok) throw new Error(`El servicio de entrega respondió HTTP ${response.status}.`);
+}
 
-  // FormSubmit puede requerir una activación inicial del correo destinatario.
-  const message = String(result?.message || result?.Message || '').toLowerCase();
-  if (message.includes('activate') || message.includes('activation') || message.includes('confirm')) {
-    const error = new Error('El correo necesita activar primero el servicio de envío. Revisa la bandeja de entrada, confirma la activación y luego usa “Reintentar procesamiento”.');
-    error.code = 'EMAIL_ACTIVATION_REQUIRED';
-    error.details = result;
-    throw error;
+async function smtpCommand(socket, command, expected) {
+  if (command !== null) socket.write(command + '\r\n');
+  const response = await smtpRead(socket);
+  const code = Number(String(response).slice(0,3));
+  const accepted = Array.isArray(expected) ? expected : [expected];
+  if (!accepted.includes(code)) throw new Error(`El servidor de correo rechazó la operación (${code}).`);
+  return response;
+}
+
+function headerSafe(value='') { return String(value).replace(/[\r\n]+/g, ' ').trim(); }
+function wrapBase64(value) { return String(value).replace(/(.{76})/g, '$1\r\n'); }
+
+function buildMimeMessage(payload, fromAddress, fromName) {
+  const boundary = `----FacturaBonita_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const html = `<div style="font-family:Arial,sans-serif;color:#102a38"><h2>Factura Bonita</h2><p>Hola ${headerSafe(payload.customerName || 'cliente')},</p><p>${headerSafe(payload.message || 'Adjuntamos su factura.')}</p><p>Referencia: <strong>${headerSafe(payload.invoiceId || '')}</strong></p></div>`;
+  const parts = [
+    `From: ${headerSafe(fromName)} <${headerSafe(fromAddress)}>`,
+    `To: ${headerSafe(payload.to)}`,
+    `Subject: ${headerSafe(payload.subject)}`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/html; charset="UTF-8"',
+    'Content-Transfer-Encoding: 8bit',
+    '',
+    html,
+    ''
+  ];
+  for (const a of payload.attachments || []) {
+    parts.push(
+      `--${boundary}`,
+      `Content-Type: ${a.contentType || 'application/octet-stream'}; name="${headerSafe(a.filename)}"`,
+      'Content-Transfer-Encoding: base64',
+      `Content-Disposition: attachment; filename="${headerSafe(a.filename)}"`,
+      '',
+      wrapBase64(a.contentBase64 || ''),
+      ''
+    );
   }
-  return result || { success:true, provider:'formsubmit', to:recipient };
+  parts.push(`--${boundary}--`, '');
+  return parts.join('\r\n').replace(/^\./gm, '..');
+}
+
+async function sendWithSmtp(payload) {
+  const host = env('SMTP_HOST','smtp.gmail.com');
+  const port = Number(env('SMTP_PORT','465'));
+  const user = env('SMTP_USER');
+  const pass = env('SMTP_PASS');
+  if (!host || !user || !pass) throw new Error('Falta configurar el correo saliente del sistema.');
+  const fromAddress = env('SMTP_FROM_EMAIL', user);
+  const fromName = env('SMTP_FROM_NAME','Factura Bonita');
+  const socket = tls.connect({ host, port, servername:host, rejectUnauthorized:true });
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(()=>reject(new Error('No fue posible conectar con el servidor de correo.')), 15000);
+    socket.once('secureConnect', ()=>{ clearTimeout(timer); resolve(); });
+    socket.once('error', err=>{ clearTimeout(timer); reject(err); });
+  });
+  try {
+    await smtpCommand(socket, null, 220);
+    await smtpCommand(socket, `EHLO ${env('SMTP_HELO','facturabonita.local')}`, 250);
+    await smtpCommand(socket, 'AUTH LOGIN', 334);
+    await smtpCommand(socket, Buffer.from(user).toString('base64'), 334);
+    await smtpCommand(socket, Buffer.from(pass).toString('base64'), 235);
+    await smtpCommand(socket, `MAIL FROM:<${fromAddress}>`, 250);
+    await smtpCommand(socket, `RCPT TO:<${payload.to}>`, [250,251]);
+    await smtpCommand(socket, 'DATA', 354);
+    const mime = buildMimeMessage(payload, fromAddress, fromName);
+    socket.write(mime + '\r\n.\r\n');
+    const sent = await smtpRead(socket);
+    const sentCode = Number(String(sent).slice(0,3));
+    if (sentCode !== 250) throw new Error(`El servidor de correo no aceptó el mensaje (${sentCode}).`);
+    socket.write('QUIT\r\n');
+    return { success:true, provider:'smtp', to:payload.to };
+  } finally {
+    socket.end();
+  }
 }
 
 async function sendPayload(payload) {
   if (env('EMAIL_DELIVERY_URL')) return sendWithExternalEndpoint(payload);
   const provider = directProvider();
   if (provider === 'resend') return sendWithResend(payload);
-  if (provider === 'formsubmit') return sendWithFormAction(payload);
+  if (provider === 'smtp') return sendWithSmtp(payload);
   throw new Error(`Proveedor de correo directo no soportado: ${provider}.`);
 }
 
 async function entregarFacturaVisual({ ventaId, to, clienteNombre, facturaId, pdfUrl }) {
   if (!configured()) {
-    await record(ventaId,'pendiente_configuracion','Falta configurar el envío de correo.');
-    const error = new Error('La factura fue generada, pero falta configurar el envío de correo.');
+    await record(ventaId,'pendiente_configuracion','Falta configurar el correo saliente del sistema.');
+    const error = new Error('El servicio de entrega por correo aún no está configurado.');
     error.code = 'EMAIL_NOT_CONFIGURED';
     throw error;
   }
@@ -145,17 +204,17 @@ async function entregarFacturaVisual({ ventaId, to, clienteNombre, facturaId, pd
     subject:`Factura ${facturaId} - Factura Bonita`,
     customerName:clienteNombre || '',
     invoiceId:facturaId,
-    message:'Su pago fue aprobado. Adjuntamos la factura visual correspondiente a su compra.',
+    message:'Su pago fue aprobado. Adjuntamos la factura correspondiente a su compra.',
     attachments:[
       { filename:`factura-${facturaId}.pdf`, contentType:'application/pdf', contentBase64:pdf.toString('base64') }
     ]
   };
   try {
     const body = await sendPayload(payload);
-    await record(ventaId,'completada',`Factura visual enviada a ${to}.`,body);
+    await record(ventaId,'completada',`Factura enviada a ${to}.`,body);
     return body;
   } catch (error) {
-    await record(ventaId,error.code==='EMAIL_ACTIVATION_REQUIRED'?'pendiente_activacion':'fallida',error.message,error.details||null);
+    await record(ventaId,'fallida',error.message,null);
     throw error;
   }
 }
@@ -163,23 +222,21 @@ async function entregarFacturaVisual({ ventaId, to, clienteNombre, facturaId, pd
 async function entregarDocumentos({ ventaId, to, clienteNombre, facturaId, pdfUrl, electronica, tributacion }) {
   if (!configured()) {
     await record(ventaId,'pendiente_configuracion','Falta configurar el servicio de entrega por correo.');
-    const error = new Error('La factura está validada, pero el servicio de entrega por correo todavía no está configurado.');
+    const error = new Error('El servicio de entrega por correo todavía no está configurado.');
     error.code = 'EMAIL_NOT_CONFIGURED';
     throw error;
   }
-
   await record(ventaId,'procesando',`Preparando entrega para ${to}.`);
   const pdf = await bufferFromUrl(pdfUrl);
   const xml = await documentBuffer({ content:electronica.xml, base64:electronica.xmlBase64, url:electronica.url });
   const receipt = await documentBuffer({ content:tributacion.receipt, base64:tributacion.receiptBase64, url:tributacion.receiptUrl });
-  if (!pdf || !xml || !receipt) throw new Error('No fue posible reunir los tres documentos requeridos para la entrega al cliente.');
-
+  if (!pdf || !xml || !receipt) throw new Error('No fue posible reunir los documentos requeridos para la entrega al cliente.');
   const payload = {
     to,
     subject:`Documentos de su compra - ${facturaId}`,
     customerName:clienteNombre || '',
     invoiceId:facturaId,
-    message:'Su operación fue procesada correctamente. Adjuntamos factura visual, factura electrónica y acuse de recibido.',
+    message:'Su operación fue procesada correctamente. Adjuntamos los documentos correspondientes.',
     attachments:[
       { filename:`factura-${facturaId}.pdf`, contentType:'application/pdf', contentBase64:pdf.toString('base64') },
       { filename:`factura-electronica-${facturaId}.xml`, contentType:'application/xml', contentBase64:xml.toString('base64') },
@@ -191,7 +248,7 @@ async function entregarDocumentos({ ventaId, to, clienteNombre, facturaId, pdfUr
     await record(ventaId,'completada',`Documentos enviados a ${to}.`,body);
     return body;
   } catch (error) {
-    await record(ventaId,error.code==='EMAIL_ACTIVATION_REQUIRED'?'pendiente_activacion':'fallida',error.message,error.details||null);
+    await record(ventaId,'fallida',error.message,null);
     throw error;
   }
 }

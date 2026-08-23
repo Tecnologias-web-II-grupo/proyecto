@@ -131,6 +131,7 @@ async function saveProfile(req, res) {
 async function saveBankProfile(req, res) {
   const affiliated = req.body?.bankAfiliado === true || String(req.body?.bankAfiliado || '').toLowerCase() === 'true';
   const merchantId = clean(req.body?.bankMerchantId, 160);
+  if (affiliated && !merchantId) return res.status(400).json({ error:'Indica el identificador de comercio de Credenciales API de BankyFinanzas.' });
   await pool.execute(
     `INSERT INTO portal_perfiles (usuario_id, bank_merchant_id, bank_afiliado)
      VALUES (?, ?, ?)
@@ -269,7 +270,9 @@ async function getSaleObject(id, userId) {
     referenciaPago: v.referencia_pago, facturaId: v.factura_id || null, errorDetalle: v.error_detalle || null,
     receptor: { nombre: v.receptor_nombre, nombreComercial:extra.nombreComercial||'', actividadEconomica:extra.actividadEconomica||'', telefono:extra.telefono||'', ubicacion:extra.ubicacion||null, correo: v.receptor_correo, identificacion: v.receptor_numero_id ? { tipo: v.receptor_tipo_id, numero: decrypt(v.receptor_numero_id) } : null },
     condicionVenta:extra.condicionVenta||'01', detalleCondicionVenta:extra.detalleCondicionVenta||'', medioPago:extra.medioPago||'02', plazoCredito:Number(extra.plazoCredito||0),
-    items: parseJson(v.items_json, []), integraciones: steps, createdAt: v.created_at, updatedAt: v.updated_at,
+    items: parseJson(v.items_json, []), integraciones: steps,
+    pago: { intentId:v.bank_intent_id||null, paymentId:v.bank_payment_id||null, transactionCode:v.bank_transaction_code||null, confirmadoAt:v.pago_confirmado_at||null },
+    createdAt: v.created_at, updatedAt: v.updated_at,
   };
 }
 
@@ -311,24 +314,31 @@ async function startPayment(req, res) {
   if (Number(sale.total) <= 0) return res.status(400).json({ error:'No se puede iniciar un pago con monto cero.' });
   const merchant = await portalMerchant(req.portalUser.usuario_id);
   if (!merchant.bankAfiliado) return res.status(409).json({ error:'Antes de pagar, confirma la afiliación de tu negocio en BankyFinanzas desde la sección Cobros.' });
+
   const checkout = new URL(process.env.BANK_CHECKOUT_URL || 'https://bankyfinanzas.netlify.app/checkout');
+  const appOrigin = new URL(publicAppUrl()).origin;
+  const merchantValue = clean(merchant.bankMerchantId || process.env.BANK_MERCHANT_ID || merchant.id, 160);
+  if (!merchantValue) return res.status(409).json({ error:'No se encontró el identificador de comercio de BankyFinanzas.' });
+
   checkout.searchParams.set('reference', sale.referenciaPago);
-  checkout.searchParams.set('amount', String(sale.total));
-  checkout.searchParams.set('currency', sale.moneda);
+  checkout.searchParams.set('orderId', sale.referenciaPago);
+  checkout.searchParams.set('amount', String(Number(sale.total).toFixed(2)));
+  checkout.searchParams.set('currency', sale.moneda || 'CRC');
+  checkout.searchParams.set('description', sale.items?.[0]?.detalle || `Venta ${sale.id}`);
+  checkout.searchParams.set('origin', appOrigin);
   checkout.searchParams.set('returnUrl', `${publicAppUrl()}/?paymentReference=${encodeURIComponent(sale.referenciaPago)}`);
-  checkout.searchParams.set('description', sale.items?.[0]?.detalle || 'Compra');
-  const merchantValue = clean(merchant.bankMerchantId || process.env.BANK_MERCHANT_ID || merchant.id || merchant.name, 160);
-  const merchantParam = clean(process.env.BANK_MERCHANT_PARAM || 'merchant', 60) || 'merchant';
-  if (merchantValue) {
-    checkout.searchParams.set(merchantParam, merchantValue);
-    // Compatibilidad con implementaciones estudiantiles que nombren el comercio de forma distinta.
-    if (String(process.env.BANK_MERCHANT_ALIASES || 'true').toLowerCase() !== 'false') {
-      for (const alias of ['merchant','merchantId','commerce','comercio']) if (alias !== merchantParam) checkout.searchParams.set(alias, merchantValue);
-    }
-  }
+
+  // BankyFinanzas entrega un identificador de comercio. merchantId es el nombre esperado
+  // por el adaptador compartido; se conserva merchant por compatibilidad con pruebas anteriores.
+  checkout.searchParams.set('merchantId', merchantValue);
+  checkout.searchParams.set('merchant', merchantValue);
   if (merchant.name) checkout.searchParams.set('merchantName', merchant.name);
-  await pool.execute("UPDATE portal_ventas SET estado='esperando_banco' WHERE id=?", [sale.id]);
-  return res.json({ checkoutUrl: checkout.toString(), referencia: sale.referenciaPago, monto: sale.total, moneda: sale.moneda, expectedOrigin: bankOrigin() });
+
+  await pool.execute("UPDATE portal_ventas SET estado='esperando_banco', error_detalle=NULL WHERE id=?", [sale.id]);
+  return res.json({
+    checkoutUrl: checkout.toString(), referencia: sale.referenciaPago, monto: sale.total,
+    moneda: sale.moneda, expectedOrigin: bankOrigin(), channel: 'bankyfinanzas:checkout'
+  });
 }
 
 async function verifyBankIfConfigured(sale, payload) {
@@ -422,22 +432,63 @@ async function confirmPayment(req, res) {
   if (!rows.length) return res.status(404).json({ error:'Venta no encontrada' });
   const row = rows[0];
   if (row.factura_id) return res.json(await getSaleObject(row.id, row.usuario_id));
+
   const mode = String(process.env.BANK_CONFIRM_MODE || 'postmessage').toLowerCase();
   let verified = null;
-  try { verified = await verifyBankIfConfigured(await getSaleObject(row.id,row.usuario_id), req.body?.payload || req.body); } catch (e) { return res.status(409).json({ error:e.message }); }
+  try { verified = await verifyBankIfConfigured(await getSaleObject(row.id,row.usuario_id), req.body?.payload || req.body); }
+  catch (e) { return res.status(409).json({ error:e.message }); }
+
   if (!verified) {
     if (mode !== 'postmessage') return res.status(409).json({ error:'Falta configurar BANK_VERIFY_URL o un callback del banco para validar el pago.' });
-    if (String(req.body?.sourceOrigin || '') !== bankOrigin()) return res.status(403).json({ error:'El mensaje de pago no proviene del origen del banco configurado.' });
+    if (String(req.body?.sourceOrigin || '') !== bankOrigin()) return res.status(403).json({ error:'El resultado no proviene del origen de BankyFinanzas configurado.' });
+
     const payload = req.body?.payload || {};
-    const status = String(payload.status || payload.estado || '').toLowerCase();
-    const success = payload.paid === true || payload.success === true || ['paid','success','completed','aprobado','pagado'].includes(status);
-    const reference = payload.reference || payload.referencia || payload.paymentReference || payload.referenciaPago;
-    if (!success) return res.status(409).json({ error:'El banco aún no reporta el pago como aprobado.' });
-    if (reference && String(reference) !== row.referencia_pago) return res.status(409).json({ error:'La referencia del pago no coincide con la venta.' });
+    const status = String(payload.status || '').toLowerCase();
+    if (status !== 'completed') return res.status(409).json({ error:'BankyFinanzas no reportó el pago como completado.' });
+
+    const paidAmount = Number(payload.amount);
+    if (!Number.isFinite(paidAmount) || Math.abs(paidAmount - Number(row.total)) > 0.01) {
+      return res.status(409).json({ error:'El monto confirmado por BankyFinanzas no coincide con el total de la venta.' });
+    }
+    if (String(payload.currency || '').toUpperCase() !== String(row.moneda || '').toUpperCase()) {
+      return res.status(409).json({ error:'La moneda confirmada por BankyFinanzas no coincide con la venta.' });
+    }
+    if (!clean(payload.transactionCode,100)) return res.status(409).json({ error:'BankyFinanzas no devolvió el código de transacción.' });
     verified = payload;
   }
-  await pool.execute("UPDATE portal_ventas SET estado='pagada', pago_payload=? WHERE id=?", [JSON.stringify(verified || req.body || {}), row.id]);
-  try { await processPaidSale(row.id); } catch (error) { return res.status(502).json({ error:'El pago fue aprobado, pero una integración posterior falló.', detalle:error.message, venta:await getSaleObject(row.id,row.usuario_id) }); }
+
+  const transactionCode = clean(verified.transactionCode,100);
+  const paymentId = clean(verified.paymentId,100);
+  const intentId = clean(verified.intentId,100);
+  if (transactionCode) {
+    const [dups] = await pool.execute('SELECT id FROM portal_ventas WHERE bank_transaction_code=? AND id<>? LIMIT 1',[transactionCode,row.id]);
+    if (dups.length) return res.status(409).json({ error:'Ese código de transacción ya fue utilizado por otra venta.' });
+  }
+  if (paymentId) {
+    const [dups] = await pool.execute('SELECT id FROM portal_ventas WHERE bank_payment_id=? AND id<>? LIMIT 1',[paymentId,row.id]);
+    if (dups.length) return res.status(409).json({ error:'Ese pago ya fue utilizado por otra venta.' });
+  }
+
+  await pool.execute(
+    `UPDATE portal_ventas SET estado='pagada', pago_payload=?, bank_intent_id=?, bank_payment_id=?, bank_transaction_code=?, pago_confirmado_at=NOW(), error_detalle=NULL WHERE id=?`,
+    [JSON.stringify(verified), intentId || null, paymentId || null, transactionCode || null, row.id]
+  );
+  try { await processPaidSale(row.id); }
+  catch (error) { return res.status(502).json({ error:'El pago fue aprobado, pero no se pudo terminar la generación de la factura.', detalle:error.message, venta:await getSaleObject(row.id,row.usuario_id) }); }
+  return res.json(await getSaleObject(row.id,row.usuario_id));
+}
+
+async function recordPaymentResult(req, res) {
+  const [rows] = await pool.execute('SELECT * FROM portal_ventas WHERE id=? AND usuario_id=? LIMIT 1', [req.params.id, req.portalUser.usuario_id]);
+  if (!rows.length) return res.status(404).json({ error:'Venta no encontrada' });
+  const row = rows[0];
+  if (row.factura_id) return res.json(await getSaleObject(row.id,row.usuario_id));
+  if (String(req.body?.sourceOrigin || '') !== bankOrigin()) return res.status(403).json({ error:'El resultado no proviene del origen de BankyFinanzas configurado.' });
+  const payload=req.body?.payload||{};
+  const status=String(payload.status||'').toLowerCase();
+  if (!['rejected','cancelled'].includes(status)) return res.status(400).json({ error:'Resultado bancario no válido para esta operación.' });
+  const detail=status==='rejected' ? `Pago rechazado${payload.rejectionCode?`: ${clean(payload.rejectionCode,80)}`:''}` : null;
+  await pool.execute("UPDATE portal_ventas SET estado='pendiente_pago', pago_payload=?, error_detalle=? WHERE id=?",[JSON.stringify(payload),detail,row.id]);
   return res.json(await getSaleObject(row.id,row.usuario_id));
 }
 
@@ -473,4 +524,4 @@ async function config(req, res) {
   });
 }
 
-module.exports = { register, login, me, saveProfile, saveBankProfile, listClients, createSale, updateSale, listSales, saleById, startPayment, confirmPayment, bankCallback, retryPipeline, config };
+module.exports = { register, login, me, saveProfile, saveBankProfile, listClients, createSale, updateSale, listSales, saleById, startPayment, confirmPayment, recordPaymentResult, bankCallback, retryPipeline, config };

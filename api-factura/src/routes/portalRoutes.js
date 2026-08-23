@@ -25,6 +25,7 @@ router.get('/ventas', requirePortalAuth, c.listSales);
 router.get('/ventas/:id', requirePortalAuth, c.saleById);
 router.post('/ventas/:id/pago/iniciar', requirePortalAuth, c.startPayment);
 router.post('/ventas/:id/pago/confirmar', requirePortalAuth, c.confirmPayment);
+router.post('/ventas/:id/pago/resultado', requirePortalAuth, c.recordPaymentResult);
 router.post('/ventas/:id/reintentar', requirePortalAuth, c.retryPipeline);
 
 module.exports = router;

@@ -1,9 +1,20 @@
 const pool = require('../db/database');
 
 function env(name, fallback='') { return String(process.env[name] || fallback).trim(); }
-function configured() { return Boolean(env('EMAIL_DELIVERY_URL') || env('RESEND_API_KEY')); }
-function directProvider() { return env('DIRECT_EMAIL_PROVIDER','resend').toLowerCase(); }
-function endpointLabel() { return env('EMAIL_DELIVERY_URL') || (env('RESEND_API_KEY') ? 'https://api.resend.com/emails' : ''); }
+function directProvider() { return env('DIRECT_EMAIL_PROVIDER','formsubmit').toLowerCase(); }
+function formActionTemplate() { return env('FORM_ACTION_URL_TEMPLATE','https://formsubmit.co/ajax/{email}'); }
+function configured() {
+  if (env('EMAIL_DELIVERY_URL')) return true;
+  if (directProvider() === 'resend') return Boolean(env('RESEND_API_KEY'));
+  if (directProvider() === 'formsubmit') return Boolean(formActionTemplate());
+  return false;
+}
+function endpointLabel() {
+  if (env('EMAIL_DELIVERY_URL')) return env('EMAIL_DELIVERY_URL');
+  if (directProvider() === 'resend') return env('RESEND_API_KEY') ? 'https://api.resend.com/emails' : '';
+  if (directProvider() === 'formsubmit') return formActionTemplate();
+  return '';
+}
 
 async function record(ventaId, estado, mensaje, response=null) {
   await pool.execute(
@@ -42,7 +53,6 @@ async function sendWithExternalEndpoint(payload) {
 }
 
 async function sendWithResend(payload) {
-  if (directProvider() !== 'resend') throw new Error(`Proveedor de correo directo no soportado: ${directProvider()}.`);
   const apiKey = env('RESEND_API_KEY');
   if (!apiKey) throw new Error('Falta configurar RESEND_API_KEY para enviar correos directamente.');
   const from = env('EMAIL_FROM','Factura Bonita <onboarding@resend.dev>');
@@ -66,14 +76,62 @@ async function sendWithResend(payload) {
   return result;
 }
 
+async function sendWithFormAction(payload) {
+  const recipient = String(payload.to || '').trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) throw new Error('El correo del cliente no tiene un formato válido.');
+
+  const template = formActionTemplate();
+  if (!template || !template.includes('{email}')) {
+    throw new Error('FORM_ACTION_URL_TEMPLATE debe incluir {email}.');
+  }
+
+  const endpoint = template.replace('{email}', encodeURIComponent(recipient));
+  const form = new FormData();
+  form.append('_subject', payload.subject || `Factura ${payload.invoiceId || ''}`);
+  form.append('_captcha', 'false');
+  form.append('_template', 'table');
+  form.append('cliente', payload.customerName || 'Cliente');
+  form.append('factura', payload.invoiceId || '');
+  form.append('mensaje', payload.message || 'Adjuntamos los documentos de su compra.');
+
+  for (const attachment of payload.attachments || []) {
+    if (!attachment?.contentBase64 || !attachment?.filename) continue;
+    const bytes = Buffer.from(attachment.contentBase64, 'base64');
+    const blob = new Blob([bytes], { type: attachment.contentType || 'application/octet-stream' });
+    form.append('attachment', blob, attachment.filename);
+  }
+
+  const response = await fetch(endpoint, {
+    method:'POST',
+    headers:{ Accept:'application/json' },
+    body:form,
+    signal:AbortSignal.timeout(Number(env('EMAIL_DELIVERY_TIMEOUT_MS','25000')))
+  });
+  const text = await response.text(); let result=text; try{result=text?JSON.parse(text):null}catch{}
+  if (!response.ok) throw new Error(`El servicio Form Action respondió HTTP ${response.status}: ${typeof result==='string'?result:JSON.stringify(result)}`);
+
+  // FormSubmit puede requerir una activación inicial del correo destinatario.
+  const message = String(result?.message || result?.Message || '').toLowerCase();
+  if (message.includes('activate') || message.includes('activation') || message.includes('confirm')) {
+    const error = new Error('El correo necesita activar primero el servicio de envío. Revisa la bandeja de entrada, confirma la activación y luego usa “Reintentar procesamiento”.');
+    error.code = 'EMAIL_ACTIVATION_REQUIRED';
+    error.details = result;
+    throw error;
+  }
+  return result || { success:true, provider:'formsubmit', to:recipient };
+}
+
 async function sendPayload(payload) {
   if (env('EMAIL_DELIVERY_URL')) return sendWithExternalEndpoint(payload);
-  return sendWithResend(payload);
+  const provider = directProvider();
+  if (provider === 'resend') return sendWithResend(payload);
+  if (provider === 'formsubmit') return sendWithFormAction(payload);
+  throw new Error(`Proveedor de correo directo no soportado: ${provider}.`);
 }
 
 async function entregarFacturaVisual({ ventaId, to, clienteNombre, facturaId, pdfUrl }) {
   if (!configured()) {
-    await record(ventaId,'pendiente_configuracion','Falta configurar el envío de correo directo (RESEND_API_KEY) o EMAIL_DELIVERY_URL.');
+    await record(ventaId,'pendiente_configuracion','Falta configurar el envío de correo.');
     const error = new Error('La factura fue generada, pero falta configurar el envío de correo.');
     error.code = 'EMAIL_NOT_CONFIGURED';
     throw error;
@@ -96,7 +154,7 @@ async function entregarFacturaVisual({ ventaId, to, clienteNombre, facturaId, pd
     await record(ventaId,'completada',`Factura visual enviada a ${to}.`,body);
     return body;
   } catch (error) {
-    await record(ventaId,'fallida',error.message);
+    await record(ventaId,error.code==='EMAIL_ACTIVATION_REQUIRED'?'pendiente_activacion':'fallida',error.message,error.details||null);
     throw error;
   }
 }
@@ -132,7 +190,7 @@ async function entregarDocumentos({ ventaId, to, clienteNombre, facturaId, pdfUr
     await record(ventaId,'completada',`Documentos enviados a ${to}.`,body);
     return body;
   } catch (error) {
-    await record(ventaId,'fallida',error.message);
+    await record(ventaId,error.code==='EMAIL_ACTIVATION_REQUIRED'?'pendiente_activacion':'fallida',error.message,error.details||null);
     throw error;
   }
 }

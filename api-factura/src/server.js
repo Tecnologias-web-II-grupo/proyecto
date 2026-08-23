@@ -14,8 +14,8 @@ const { calentarNavegador, obtenerEstadoBrowser, cerrarBrowser } = require('../d
 const { obtenerEstadoRenderer } = require('../document-renderer/pdfRenderer');
 
 const app = express();
-const API_VERSION = '4.4.0';
-const TEMPLATE_VERSION = 'factura-v44-react-banky-postmessage-v21';
+const API_VERSION = '4.5.0';
+const TEMPLATE_VERSION = 'factura-v44-react-banky-pulida-v22';
 
 const allowedOrigins = new Set(
   (process.env.FRONTEND_URL || '')
@@ -88,7 +88,7 @@ const contrato = {
     referenciaExterna: 'Referencia opcional e idempotente del cliente, por ejemplo cargo:42.',
     logo: 'Opcional. Admite dos variantes: emisor.logoUrl / archivo logo para fondos claros y emisor.logoUrlBlanco / archivo logoBlanco para el encabezado oscuro. PNG/JPG/WEBP, máximo 500 KB por variante.',
     plantillaPdf: 'auto usa EduControl cuando origen=educontrol; para otros sistemas usa la plantilla genérica. Ambas plantillas muestran los campos fiscales ampliados cuando se envían.',
-    perfilV44Visual: 'En POST /api/facturas use perfilValidacion=v44-visual para exigir el conjunto ampliado de campos del comprobante visual. No genera XML ni firma digital.',
+    perfilV44Visual: 'En POST /api/facturas use perfilValidacion=v44-visual para validar el comprobante visual con campos ampliados cuando se proporcionen. No genera XML ni firma digital.',
   },
 };
 

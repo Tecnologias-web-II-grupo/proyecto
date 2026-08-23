@@ -14,6 +14,7 @@ export default function BankConnection({ config, me, onSaved, onBack }) {
 
   async function save() {
     if (affiliated && !merchantId.trim()) { setMsg('Copia primero el identificador de comercio que aparece en Credenciales API de BankyFinanzas.'); return; }
+    if (merchantId.trim() && !/^[A-Za-z0-9_-]{20,128}$/.test(merchantId.trim())) { setMsg('Ese identificador no tiene el formato de una credencial de comercio de BankyFinanzas.'); return; }
     setBusy(true); setMsg('');
     try {
       const data = await api('/api/portal/perfil/banco', {
@@ -48,7 +49,7 @@ export default function BankConnection({ config, me, onSaved, onBack }) {
     <div className="bank-config-card">
       <label className="check-line"><input type="checkbox" checked={affiliated} onChange={e=>setAffiliated(e.target.checked)}/><span>Mi negocio ya está afiliado en BankyFinanzas</span></label>
       <label>Identificador de comercio <small>Lo encuentras en Credenciales API de BankyFinanzas.</small>
-        <input value={merchantId} onChange={e=>setMerchantId(e.target.value.trimStart().slice(0,160))} placeholder="Pega aquí tu identificador" disabled={!affiliated}/>
+        <input value={merchantId} onChange={e=>setMerchantId(e.target.value.replace(/[^A-Za-z0-9_-]/g,'').slice(0,128))} placeholder="Pega aquí tu identificador de comercio" disabled={!affiliated}/>
       </label>
       <div className="bank-business-reference"><span>Negocio</span><strong>{me?.empresa}</strong><span>Identificación</span><strong>{me?.numeroIdentificacion}</strong></div>
       <button className="primary" disabled={busy||!affiliated||!merchantId.trim()} onClick={save}>{busy?'Guardando...':'Guardar conexión de cobro'}</button>

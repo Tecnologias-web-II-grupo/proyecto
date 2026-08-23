@@ -115,7 +115,9 @@ function normalizarFacturaEntrada(req, res, next) {
 
 function validateFactura(body = {}) {
   const errors = [];
-  const perfilV44 = ['v44', 'v44-visual', 'hacienda-v44'].includes(String(body.perfilValidacion || '').toLowerCase());
+  const perfilNombre = String(body.perfilValidacion || '').toLowerCase();
+  const perfilV44 = ['v44', 'v44-visual', 'hacienda-v44'].includes(perfilNombre);
+  const perfilHacienda = perfilNombre === 'hacienda-v44';
 
   const required = (path, value) => {
     if (value === undefined || value === null || value === '') errors.push(`Falta el campo requerido: ${path}`);
@@ -162,12 +164,13 @@ function validateFactura(body = {}) {
     if (parte.telefono?.numero && !/^\d{8,20}$/.test(String(parte.telefono.numero))) errors.push(`${nombre}.telefono.numero debe tener entre 8 y 20 dígitos`);
     if (parte.ubicacion) {
       for (const k of ['provincia', 'canton', 'distrito']) {
-        if (parte.ubicacion[k] && !/^\d{1,3}$/.test(String(parte.ubicacion[k]))) errors.push(`${nombre}.ubicacion.${k} debe ser numérico`);
+        if (perfilHacienda && parte.ubicacion[k] && !/^\d{1,3}$/.test(String(parte.ubicacion[k]))) errors.push(`${nombre}.ubicacion.${k} debe ser numérico`);
+        if (!perfilHacienda) maxLen(`${nombre}.ubicacion.${k}`, parte.ubicacion[k], 80);
       }
       maxLen(`${nombre}.ubicacion.otrasSenas`, parte.ubicacion.otrasSenas, 250);
       maxLen(`${nombre}.ubicacion.otrasSenasExtranjero`, parte.ubicacion.otrasSenasExtranjero, 300);
     }
-    if (!receptor && perfilV44) {
+    if (!receptor && perfilHacienda) {
       required(`${nombre}.actividadEconomica`, parte.actividadEconomica);
     }
   };
@@ -215,7 +218,7 @@ function validateFactura(body = {}) {
       numeroNoNegativo(`items[${idx}].montoTotalLinea`, item.montoTotalLinea);
 
       if (perfilV44) {
-        required(`items[${idx}].codigoCabys`, item.codigoCabys);
+        if (perfilHacienda) required(`items[${idx}].codigoCabys`, item.codigoCabys);
         required(`items[${idx}].unidadMedida`, item.unidadMedida);
         required(`items[${idx}].baseImponible`, item.baseImponible ?? item.subtotal);
         maxLen(`items[${idx}].codigoCabys`, item.codigoCabys, 13);

@@ -1,4 +1,4 @@
-const { randomUUID } = require('crypto');
+const { randomUUID, createHmac } = require('crypto');
 const pool = require('../db/database');
 const { encrypt, decrypt } = require('../middleware/crypto');
 const { hashPassword, verifyPassword, newSessionToken, hashToken } = require('./security');
@@ -11,6 +11,7 @@ function dataUrlFromFile(file) {
   return `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
 }
 function parseJson(value, fallback) { try { return JSON.parse(value); } catch { return fallback; } }
+function identificationHash(value) { return createHmac('sha256', String(process.env.ENCRYPTION_KEY || 'portal-client-key')).update(String(value || '')).digest('hex'); }
 function bankOrigin() {
   if (process.env.BANK_ALLOWED_ORIGIN) return String(process.env.BANK_ALLOWED_ORIGIN).trim();
   try { return new URL(process.env.BANK_CHECKOUT_URL || 'https://bankyfinanzas.netlify.app/checkout').origin; }
@@ -54,6 +55,8 @@ async function register(req, res) {
   const correoFacturacion = clean(req.body.correoFacturacion || email, 160).toLowerCase();
   if (!nombre || !email || !empresa || !numero) return res.status(400).json({ error: 'Completa nombre, correo, empresa e identificación.' });
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Correo inválido' });
+  if (!/^\d{8,12}$/.test(numero)) return res.status(400).json({ error: 'La identificación debe contener entre 8 y 12 dígitos.' });
+  if (req.body.actividadEconomica && !/^\d{6}$/.test(String(req.body.actividadEconomica))) return res.status(400).json({ error:'La actividad económica debe tener 6 dígitos.' });
   const passwordHash = await hashPassword(password);
   const id = randomUUID();
   try {
@@ -62,7 +65,11 @@ async function register(req, res) {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [id, nombre, email, passwordHash, empresa, tipo, encrypt(numero), correoFacturacion]
     );
-    await pool.execute('INSERT INTO portal_perfiles (usuario_id, nombre_comercial) VALUES (?, ?)', [id, empresa]);
+    await pool.execute(
+      `INSERT INTO portal_perfiles (usuario_id, nombre_comercial, actividad_economica, telefono, provincia, canton, distrito, otras_senas)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, empresa, clean(req.body.actividadEconomica, 6), clean(req.body.telefono, 30), clean(req.body.provincia, 3), clean(req.body.canton, 3), clean(req.body.distrito, 3), clean(req.body.otrasSenas, 255)]
+    );
     return res.status(201).json({ id, nombre, email, empresa });
   } catch (error) {
     if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'Ya existe una cuenta con ese correo.' });
@@ -106,17 +113,13 @@ async function saveProfile(req, res) {
   const position = ['left','center','right'].includes(req.body.logoPosicion) ? req.body.logoPosicion : 'left';
   const logo = req.files?.logo?.[0] ? dataUrlFromFile(req.files.logo[0]) : null;
   const logoBlanco = req.files?.logoBlanco?.[0] ? dataUrlFromFile(req.files.logoBlanco[0]) : null;
-  const current = await pool.execute('SELECT logo, logo_blanco FROM portal_perfiles WHERE usuario_id = ?', [req.portalUser.usuario_id]);
-  const existing = current[0][0] || {};
+  const [current] = await pool.execute('SELECT logo, logo_blanco FROM portal_perfiles WHERE usuario_id = ?', [req.portalUser.usuario_id]);
+  const existing = current[0] || {};
   await pool.execute(
-    `INSERT INTO portal_perfiles (usuario_id, nombre_comercial, actividad_economica, telefono, provincia, canton, distrito, otras_senas, logo, logo_blanco, logo_posicion)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE nombre_comercial=VALUES(nombre_comercial), actividad_economica=VALUES(actividad_economica), telefono=VALUES(telefono),
-       provincia=VALUES(provincia), canton=VALUES(canton), distrito=VALUES(distrito), otras_senas=VALUES(otras_senas),
-       logo=VALUES(logo), logo_blanco=VALUES(logo_blanco), logo_posicion=VALUES(logo_posicion)`,
-    [req.portalUser.usuario_id, clean(req.body.nombreComercial, 160), clean(req.body.actividadEconomica, 12), clean(req.body.telefono, 30),
-      clean(req.body.provincia, 3), clean(req.body.canton, 3), clean(req.body.distrito, 3), clean(req.body.otrasSenas, 255),
-      logo || existing.logo || null, logoBlanco || existing.logo_blanco || null, position]
+    `INSERT INTO portal_perfiles (usuario_id, logo, logo_blanco, logo_posicion)
+     VALUES (?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE logo=VALUES(logo), logo_blanco=VALUES(logo_blanco), logo_posicion=VALUES(logo_posicion)`,
+    [req.portalUser.usuario_id, logo || existing.logo || null, logoBlanco || existing.logo_blanco || null, position]
   );
   return me(req, res);
 }
@@ -124,16 +127,21 @@ async function saveProfile(req, res) {
 function normalizeItems(items) {
   if (!Array.isArray(items) || !items.length) throw new Error('Agrega al menos un producto o servicio.');
   return items.slice(0, 50).map((item, index) => {
-    const cantidad = Math.max(Number(item.cantidad || 0), 0);
-    const precio = Math.max(Number(item.precioUnitario || 0), 0);
-    const descuento = Math.max(Number(item.descuento || 0), 0);
-    const tarifa = Math.max(Number(item.impuestoTarifa || 0), 0);
+    const cantidad = Number(item.cantidad || 0);
+    const precio = Number(item.precioUnitario || 0);
+    const descuento = Number(item.descuento || 0);
+    const tarifa = Number(item.impuestoTarifa || 0);
     const detalle = clean(item.detalle, 255);
     const cabys = clean(item.codigoCabys, 13);
-    if (!detalle || cantidad <= 0) throw new Error(`La línea ${index + 1} no es válida.`);
-    if (!cabys || cabys.length !== 13) throw new Error(`La línea ${index + 1} requiere un código CAByS de 13 dígitos.`);
+    if (!detalle) throw new Error(`Escribe la descripción de la línea ${index + 1}.`);
+    if (!cabys || !/^\d{13}$/.test(cabys)) throw new Error(`La línea ${index + 1} requiere un código CAByS de 13 dígitos.`);
+    if (!Number.isInteger(cantidad) || cantidad < 1 || cantidad > 100000) throw new Error(`La cantidad de la línea ${index + 1} debe ser un número entero entre 1 y 100000.`);
+    if (!Number.isInteger(precio) || precio < 1 || precio > 999999999) throw new Error(`El precio de la línea ${index + 1} debe ser un monto entero mayor que cero.`);
+    if (!Number.isInteger(descuento) || descuento < 0) throw new Error(`El descuento de la línea ${index + 1} debe ser un monto entero mayor o igual a cero.`);
+    if (![0,1,2,4,13].includes(tarifa)) throw new Error(`La tarifa de IVA de la línea ${index + 1} no es válida.`);
     const bruto = cantidad * precio;
-    const subtotal = Math.max(bruto - descuento, 0);
+    if (descuento > bruto) throw new Error(`El descuento de la línea ${index + 1} no puede superar el importe de la línea.`);
+    const subtotal = bruto - descuento;
     const impuestoMonto = subtotal * tarifa / 100;
     const codigoComercial = clean(item.codigoComercial, 50);
     const impuesto = { codigo:'01', codigoTarifaIVA:clean(item.codigoTarifaIVA,2) || taxCode(tarifa), tarifa, factorCalculoIVA:1, monto:Number(impuestoMonto.toFixed(2)) };
@@ -169,7 +177,11 @@ async function createSale(req, res) {
   const descuento = items.reduce((a, i) => a + i.descuento, 0);
   const impuesto = items.reduce((a, i) => a + i.impuestoNeto, 0);
   const total = items.reduce((a, i) => a + i.montoTotalLinea, 0);
-  if (!clean(receptor.nombre,160) || !clean(receptor.correo,160) || !clean(receptor.identificacion?.numero,40)) return res.status(400).json({ error: 'Completa nombre, identificación y correo del cliente.' });
+  const receptorNombre=clean(receptor.nombre,160), receptorCorreo=clean(receptor.correo,160).toLowerCase(), receptorNumero=clean(receptor.identificacion?.numero,40);
+  if (!receptorNombre || !receptorCorreo || !receptorNumero) return res.status(400).json({ error: 'Completa nombre, identificación y correo del cliente.' });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(receptorCorreo)) return res.status(400).json({ error:'El correo del cliente no es válido.' });
+  if (!/^\d{8,12}$/.test(receptorNumero)) return res.status(400).json({ error:'La identificación del cliente debe contener entre 8 y 12 dígitos.' });
+  if (receptor.actividadEconomica && !/^\d{6}$/.test(String(receptor.actividadEconomica))) return res.status(400).json({ error:'La actividad económica del cliente debe tener 6 dígitos.' });
   if (total <= 0) return res.status(400).json({ error:'El total de la venta debe ser mayor que cero.' });
   const id = `V-${randomUUID().slice(0,8).toUpperCase()}`;
   const reference = `BANK-${id}`;
@@ -187,6 +199,14 @@ async function createSale(req, res) {
       receptor.identificacion?.numero ? encrypt(clean(receptor.identificacion.numero,40)) : null, clean(receptor.correo,160).toLowerCase(), JSON.stringify(items),
       subtotal, descuento, impuesto, total, clean(req.body.moneda || 'CRC',3), reference, JSON.stringify(extra)]
   );
+  const clientNumber=clean(receptor.identificacion?.numero,40);
+  const clientType=clean(receptor.identificacion?.tipo,2)||'01';
+  await pool.execute(
+    `INSERT INTO portal_clientes (usuario_id,nombre,nombre_comercial,tipo_identificacion,numero_identificacion,identificacion_hash,correo,actividad_economica,telefono,provincia,canton,distrito,otras_senas)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+     ON DUPLICATE KEY UPDATE nombre=VALUES(nombre),nombre_comercial=VALUES(nombre_comercial),numero_identificacion=VALUES(numero_identificacion),correo=VALUES(correo),actividad_economica=VALUES(actividad_economica),telefono=VALUES(telefono),provincia=VALUES(provincia),canton=VALUES(canton),distrito=VALUES(distrito),otras_senas=VALUES(otras_senas),updated_at=CURRENT_TIMESTAMP`,
+    [req.portalUser.usuario_id,clean(receptor.nombre,160),clean(receptor.nombreComercial,160),clientType,encrypt(clientNumber),identificationHash(clientNumber),clean(receptor.correo,160).toLowerCase(),clean(receptor.actividadEconomica,12),clean(receptor.telefono,30),clean(receptor.ubicacion?.provincia,3),clean(receptor.ubicacion?.canton,3),clean(receptor.ubicacion?.distrito,3),clean(receptor.ubicacion?.otrasSenas,255)]
+  );
   return res.status(201).json(await getSaleObject(id, req.portalUser.usuario_id));
 }
 
@@ -203,6 +223,24 @@ async function getSaleObject(id, userId) {
     condicionVenta:extra.condicionVenta||'01', detalleCondicionVenta:extra.detalleCondicionVenta||'', medioPago:extra.medioPago||'02', plazoCredito:Number(extra.plazoCredito||0),
     items: parseJson(v.items_json, []), integraciones: steps, createdAt: v.created_at, updatedAt: v.updated_at,
   };
+}
+
+async function listClients(req, res) {
+  const [rows] = await pool.execute(
+    `SELECT id,nombre,nombre_comercial,tipo_identificacion,numero_identificacion,correo,actividad_economica,telefono,provincia,canton,distrito,otras_senas
+     FROM portal_clientes WHERE usuario_id=? ORDER BY updated_at DESC LIMIT 50`, [req.portalUser.usuario_id]
+  );
+  const items=rows.map(r=>({id:`c-${r.id}`,nombre:r.nombre,nombreComercial:r.nombre_comercial||'',tipo:r.tipo_identificacion,numero:decrypt(r.numero_identificacion),correo:r.correo,actividadEconomica:r.actividad_economica||'',telefono:r.telefono||'',provincia:r.provincia||'',canton:r.canton||'',distrito:r.distrito||'',otrasSenas:r.otras_senas||''}));
+  if (items.length < 10) {
+    const [sales]=await pool.execute(`SELECT id,receptor_nombre,receptor_tipo_id,receptor_numero_id,receptor_correo,datos_venta_json FROM portal_ventas WHERE usuario_id=? AND receptor_numero_id IS NOT NULL ORDER BY updated_at DESC LIMIT 30`,[req.portalUser.usuario_id]);
+    const seen=new Set(items.map(x=>`${x.tipo}:${x.numero}`));
+    for (const v of sales) {
+      const numero=decrypt(v.receptor_numero_id), key=`${v.receptor_tipo_id}:${numero}`; if(seen.has(key))continue; seen.add(key);
+      const extra=parseJson(v.datos_venta_json,{}), ub=extra.ubicacion||{};
+      items.push({id:`v-${v.id}`,nombre:v.receptor_nombre,nombreComercial:extra.nombreComercial||'',tipo:v.receptor_tipo_id||'01',numero,correo:v.receptor_correo,actividadEconomica:extra.actividadEconomica||'',telefono:extra.telefono||'',provincia:ub.provincia||'',canton:ub.canton||'',distrito:ub.distrito||'',otrasSenas:ub.otrasSenas||''});
+    }
+  }
+  return res.json({items:items.slice(0,50)});
 }
 
 async function listSales(req, res) {
@@ -386,4 +424,4 @@ async function config(req, res) {
   });
 }
 
-module.exports = { register, login, me, saveProfile, createSale, listSales, saleById, startPayment, confirmPayment, bankCallback, retryPipeline, config };
+module.exports = { register, login, me, saveProfile, listClients, createSale, listSales, saleById, startPayment, confirmPayment, bankCallback, retryPipeline, config };

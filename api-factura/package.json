@@ -1,7 +1,7 @@
 {
   "name": "api-factura",
-  "version": "4.1.0",
-  "description": "Factura Bonita: portal React de ventas, pago bancario integrado y generación de comprobantes mediante API REST.",
+  "version": "4.2.0",
+  "description": "Factura Bonita: portal React para registrar ventas, cobrar y generar facturas personalizadas.",
   "main": "src/server.js",
   "scripts": {
     "test": "node --test --experimental-test-isolation=none",

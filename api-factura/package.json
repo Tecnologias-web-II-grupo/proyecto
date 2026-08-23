@@ -1,14 +1,16 @@
 {
   "name": "api-factura",
-  "version": "3.0.0",
-  "description": "API REST compartida de facturación al cliente con React/JSX y PDF A4 legible, limpio y optimizado para lectura rápida.",
+  "version": "4.0.0",
+  "description": "API Factura con portal React de registro, venta integrada, banco, configuración de logo y generación PDF.",
   "main": "src/server.js",
   "scripts": {
     "test": "node --test --experimental-test-isolation=none",
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "postinstall": "node scripts/installChrome.js",
-    "install:chrome": "node scripts/installChrome.js"
+    "postinstall": "node scripts/installChrome.js && npm --prefix frontend install && npm --prefix frontend run build",
+    "install:chrome": "node scripts/installChrome.js",
+    "build:frontend": "npm --prefix frontend install && npm --prefix frontend run build",
+    "dev:frontend": "npm --prefix frontend run dev"
   },
   "keywords": [],
   "author": "",

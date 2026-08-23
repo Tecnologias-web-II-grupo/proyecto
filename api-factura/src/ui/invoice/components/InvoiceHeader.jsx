@@ -5,22 +5,27 @@ const { texto, fecha, iniciales, codigo, CONDICIONES, PAGOS } = require('../form
 function InvoiceHeader({ factura }) {
   const emisor = factura.emisor || {};
   const logoHeader = emisor.logoUrl || emisor.logoUrlBlanco || null;
+  const logoPosicion = ['left','center','right'].includes(String(emisor.logoPosicion || '').toLowerCase())
+    ? String(emisor.logoPosicion).toLowerCase()
+    : 'left';
   const plazo = factura.plazoCreditoDias ?? factura.plazoCredito;
 
   return React.createElement(React.Fragment, null,
     React.createElement('header', { className: 'hero' },
-      React.createElement('div', { className: 'brand' },
+      React.createElement('div', { className: `logo-line logo-${logoPosicion}` },
         logoHeader
           ? React.createElement('div', { className: 'logo' }, React.createElement('img', { src: logoHeader, alt: 'Logo del emisor' }))
-          : React.createElement('div', { className: 'logo fallback' }, iniciales(emisor.nombre)),
-        React.createElement('div', { className: 'brand-copy' },
-            React.createElement('h1', null, texto(emisor.nombre, 'Emisor')),
-          emisor.correo ? React.createElement('p', null, emisor.correo) : null
-        )
+          : React.createElement('div', { className: 'logo fallback' }, iniciales(emisor.nombre))
       ),
-      React.createElement('div', { className: 'number' },
-        React.createElement('span', null, 'FACTURA'),
-        React.createElement('strong', { className: 'mono' }, texto(factura.id, 'Sin número'))
+      React.createElement('div', { className: 'hero-main' },
+        React.createElement('div', { className: 'brand-copy' },
+          React.createElement('h1', null, texto(emisor.nombre, 'Emisor')),
+          emisor.correo ? React.createElement('p', null, emisor.correo) : null
+        ),
+        React.createElement('div', { className: 'number' },
+          React.createElement('span', null, 'FACTURA'),
+          React.createElement('strong', { className: 'mono' }, texto(factura.id, 'Sin número'))
+        )
       )
     ),
     React.createElement('section', { className: 'meta' },

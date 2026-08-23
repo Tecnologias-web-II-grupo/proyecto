@@ -14,8 +14,8 @@ const { calentarNavegador, obtenerEstadoBrowser, cerrarBrowser } = require('../d
 const { obtenerEstadoRenderer } = require('../document-renderer/pdfRenderer');
 
 const app = express();
-const API_VERSION = '4.7.0';
-const TEMPLATE_VERSION = 'factura-v44-react-logo-posicion-final-v24';
+const API_VERSION = '4.8.0';
+const TEMPLATE_VERSION = 'factura-v44-ecosistema-servicios-v25';
 
 const allowedOrigins = new Set(
   (process.env.FRONTEND_URL || '')
@@ -67,7 +67,7 @@ const contrato = {
   servicio: 'API compartida de facturación al cliente',
   version: API_VERSION,
   templateVersion: TEMPLATE_VERSION,
-  descripcion: 'Portal de venta y API REST de facturación al cliente. Permite registrar negocios, configurar el logo, procesar ventas con servicios externos y generar la factura al finalizar el flujo.',
+  descripcion: 'Portal de venta y API REST de facturación al cliente. Tras el pago, valida firma digital, solicita factura electrónica, espera acuse de Tributación y entrega los documentos al correo del cliente.',
   endpoints: {
     crear: 'POST /api/facturas',
     listar: 'GET /api/facturas?origen=&referenciaExterna=&limit=&offset=',
@@ -82,13 +82,15 @@ const contrato = {
     portalVenta: 'POST /api/portal/ventas',
     portalBanco: 'POST /api/portal/ventas/:id/pago/iniciar',
     portalConfirmarPago: 'POST /api/portal/ventas/:id/pago/confirmar',
+    portalReintentarDocumentos: 'POST /api/portal/ventas/:id/reintentar',
   },
   interoperabilidad: {
     origen: 'Identificador opcional del sistema cliente, por ejemplo educontrol.',
     referenciaExterna: 'Referencia opcional e idempotente del cliente, por ejemplo cargo:42.',
     logo: 'Opcional. Admite dos variantes: emisor.logoUrl / archivo logo para fondos claros y emisor.logoUrlBlanco / archivo logoBlanco para el encabezado oscuro. PNG/JPG/WEBP, máximo 500 KB por variante.',
     plantillaPdf: 'auto usa EduControl cuando origen=educontrol; para otros sistemas usa la plantilla genérica. Ambas plantillas muestran los campos fiscales ampliados cuando se envían.',
-    perfilV44Visual: 'En POST /api/facturas use perfilValidacion=v44-visual para validar el comprobante visual con campos ampliados cuando se proporcionen. No genera XML ni firma digital.',
+    perfilV44Visual: 'En POST /api/facturas use perfilValidacion=v44-visual para validar el comprobante visual con campos ampliados cuando se proporcionen.',
+    flujoServicios: 'El portal conserva el pago aprobado y luego coordina firma digital -> factura electrónica -> Tributación -> correo. Los endpoints externos se configuran por variables de entorno.',
   },
 };
 

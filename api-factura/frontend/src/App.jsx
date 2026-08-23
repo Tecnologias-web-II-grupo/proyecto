@@ -68,7 +68,7 @@ export default function App(){
         <section className="hero-copy">
           <span className="eyebrow">FACTURA BONITA</span>
           <h1>Vende, cobra y entrega una factura clara.</h1>
-          <p>Registra tu negocio, prepara una venta y cobra de forma segura. Cuando el pago queda aprobado, la factura se genera con los datos de la operación y queda lista para verla o guardarla.</p>
+          <p>Registra tu negocio, prepara una venta y cobra de forma segura. Después del pago, Factura Bonita coordina la validación documental y entrega al cliente la factura visual, la factura electrónica y el acuse.</p>
           <div className="benefits"><span>Tu negocio y tus clientes</span><span>Factura después del pago</span><span>Logo a tu manera</span></div>
         </section>
         <AuthPanel onReady={load}/>

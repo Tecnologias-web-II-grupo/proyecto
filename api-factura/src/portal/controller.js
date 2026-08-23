@@ -4,6 +4,8 @@ const { encrypt, decrypt } = require('../middleware/crypto');
 const { hashPassword, verifyPassword, newSessionToken, hashToken } = require('./security');
 const { ensurePortalSchema } = require('./schema');
 const { ejecutarPipeline, parsePipeline } = require('../services/integrationPipeline');
+const { validarFirmaDigital, solicitarFacturaElectronica, enviarTributacion } = require('../services/ecosystemIntegration');
+const { configured: emailConfigured, entregarDocumentos } = require('../services/emailDelivery');
 
 function clean(value, max = 255) { return String(value ?? '').trim().slice(0, max); }
 function dataUrlFromFile(file) {
@@ -347,7 +349,8 @@ async function saleById(req, res) {
 async function startPayment(req, res) {
   const sale = await getSaleObject(req.params.id, req.portalUser.usuario_id);
   if (!sale) return res.status(404).json({ error: 'Venta no encontrada' });
-  if (sale.estado === 'facturada') return res.json({ alreadyCompleted: true, facturaId: sale.facturaId });
+  if (sale.estado === 'entregada') return res.json({ alreadyCompleted: true, facturaId: sale.facturaId });
+  if (sale?.pago?.transactionCode || sale?.pago?.confirmadoAt) return res.status(409).json({ error:'Esta venta ya tiene un pago aprobado y está procesando sus documentos.' });
   if (Number(sale.total) <= 0) return res.status(400).json({ error:'No se puede iniciar un pago con monto cero.' });
   const merchant = await portalMerchant(req.portalUser.usuario_id);
   if (!merchant.bankAfiliado) return res.status(409).json({ error:'Antes de pagar, confirma la afiliación de tu negocio en BankyFinanzas desde la sección Cobros.' });
@@ -438,28 +441,78 @@ async function buildInvoiceFromSale(saleRow, userId) {
   };
 }
 
+async function fetchInvoiceJson(facturaId) {
+  const response = await fetch(`${publicApiUrl()}/api/facturas/${encodeURIComponent(facturaId)}`, {
+    signal:AbortSignal.timeout(15000)
+  });
+  const text = await response.text(); let body = text; try { body = text ? JSON.parse(text) : null; } catch {}
+  if (!response.ok) throw new Error(`No se pudo recuperar la factura visual ${facturaId}.`);
+  return body;
+}
+
 async function processPaidSale(saleId) {
   const [rows] = await pool.execute('SELECT * FROM portal_ventas WHERE id=? LIMIT 1', [saleId]);
   if (!rows.length) throw new Error('Venta no encontrada');
-  const row = rows[0];
-  if (row.factura_id) return row.factura_id;
-  await pool.execute("UPDATE portal_ventas SET estado='procesando_integraciones', error_detalle=NULL WHERE id=?", [saleId]);
+  let row = rows[0];
+  if (row.estado !== 'pagada' && !row.bank_transaction_code && !row.pago_confirmado_at) throw new Error('La venta todavía no tiene un pago aprobado.');
+  if (row.estado === 'entregada') return row.factura_id;
+
   try {
-    const payload = {
-      receptor: { nombre: row.receptor_nombre, correo: row.receptor_correo },
-      items: parseJson(row.items_json, []), total: Number(row.total), moneda: row.moneda, referenciaPago: row.referencia_pago,
-    };
-    await ejecutarPipeline(row, payload);
-    const invoiceBody = await buildInvoiceFromSale(row, row.usuario_id);
-    const response = await fetch(`${publicApiUrl()}/api/facturas`, {
-      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(invoiceBody), signal:AbortSignal.timeout(20000)
+    // 1) Antes de facturar, el negocio debe estar reconocido por el servicio de firma digital.
+    await pool.execute("UPDATE portal_ventas SET estado='validando_firma', error_detalle=NULL WHERE id=?", [saleId]);
+    const invoiceDraft = await buildInvoiceFromSale(row, row.usuario_id);
+    await validarFirmaDigital({ ventaId:saleId, emisor:invoiceDraft.emisor, venta:row });
+
+    // 2) Generamos nuestra factura visual. Se guarda internamente, pero aún no se entrega al cliente.
+    let facturaId = row.factura_id;
+    let invoiceBody = invoiceDraft;
+    if (!facturaId) {
+      await pool.execute("UPDATE portal_ventas SET estado='generando_factura_visual' WHERE id=?", [saleId]);
+      const response = await fetch(`${publicApiUrl()}/api/facturas`, {
+        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(invoiceDraft), signal:AbortSignal.timeout(20000)
+      });
+      const text = await response.text(); let result = text; try { result = JSON.parse(text); } catch {}
+      if (!response.ok || !result?.id) throw new Error(`No se pudo generar la factura visual: ${typeof result==='string'?result:JSON.stringify(result)}`);
+      facturaId = result.id;
+      await pool.execute("UPDATE portal_ventas SET factura_id=?, estado='factura_visual_generada', error_detalle=NULL WHERE id=?", [facturaId, saleId]);
+      const [fresh] = await pool.execute('SELECT * FROM portal_ventas WHERE id=? LIMIT 1',[saleId]);
+      row = fresh[0] || row;
+    } else {
+      invoiceBody = await fetchInvoiceJson(facturaId);
+    }
+
+    const pdfUrl = `${publicAppUrl()}/api/documentos/facturas/${encodeURIComponent(facturaId)}?formato=pdf&plantilla=auto`;
+
+    // 3) El grupo de Facturación Electrónica recibe nuestra factura y devuelve el documento electrónico.
+    await pool.execute("UPDATE portal_ventas SET estado='procesando_electronica' WHERE id=?", [saleId]);
+    const electronica = await solicitarFacturaElectronica({ ventaId:saleId, factura:invoiceBody, facturaId, pdfUrl });
+
+    // 4) La factura electrónica se envía a Tributación/Administración Directa y esperamos acuse.
+    await pool.execute("UPDATE portal_ventas SET estado='procesando_tributacion' WHERE id=?", [saleId]);
+    const tributacion = await enviarTributacion({
+      ventaId:saleId, facturaId, emisor:invoiceBody.emisor, receptor:invoiceBody.receptor, electronica
     });
-    const text = await response.text(); let result = text; try { result = JSON.parse(text); } catch {}
-    if (!response.ok || !result?.id) throw new Error(`No se pudo generar la factura: ${typeof result==='string'?result:JSON.stringify(result)}`);
-    await pool.execute("UPDATE portal_ventas SET estado='facturada', factura_id=?, error_detalle=NULL WHERE id=?", [result.id, saleId]);
-    return result.id;
+
+    // Integraciones adicionales opcionales que el grupo quiera insertar sin cambiar código.
+    if (parsePipeline().length) {
+      await pool.execute("UPDATE portal_ventas SET estado='procesando_integraciones' WHERE id=?", [saleId]);
+      await ejecutarPipeline(row, {
+        facturaId, factura:invoiceBody, facturaElectronica:electronica.raw, tributacion:tributacion.raw,
+        receptor:{ nombre:row.receptor_nombre, correo:row.receptor_correo }, total:Number(row.total), moneda:row.moneda
+      });
+    }
+
+    // 5) Solo cuando ya tenemos factura visual + electrónica + acuse, se entregan los 3 documentos por correo.
+    await pool.execute("UPDATE portal_ventas SET estado='preparando_entrega' WHERE id=?", [saleId]);
+    await entregarDocumentos({
+      ventaId:saleId, to:row.receptor_correo, clienteNombre:row.receptor_nombre,
+      facturaId, pdfUrl, electronica, tributacion
+    });
+
+    await pool.execute("UPDATE portal_ventas SET estado='entregada', error_detalle=NULL WHERE id=?", [saleId]);
+    return facturaId;
   } catch (error) {
-    await pool.execute("UPDATE portal_ventas SET estado='pagada', error_detalle=? WHERE id=?", [error.message, saleId]);
+    await pool.execute("UPDATE portal_ventas SET estado='procesamiento_fallido', error_detalle=? WHERE id=?", [error.message, saleId]);
     throw error;
   }
 }
@@ -511,7 +564,7 @@ async function confirmPayment(req, res) {
     [JSON.stringify(verified), intentId || null, paymentId || null, transactionCode || null, row.id]
   );
   try { await processPaidSale(row.id); }
-  catch (error) { return res.status(502).json({ error:'El pago fue aprobado, pero no se pudo terminar la generación de la factura.', detalle:error.message, venta:await getSaleObject(row.id,row.usuario_id) }); }
+  catch (error) { return res.status(502).json({ error:'El pago fue aprobado y quedó registrado, pero el procesamiento documental no pudo terminar.', detalle:error.message, venta:await getSaleObject(row.id,row.usuario_id) }); }
   return res.json(await getSaleObject(row.id,row.usuario_id));
 }
 
@@ -548,7 +601,7 @@ async function bankCallback(req, res) {
 async function retryPipeline(req, res) {
   const sale = await getSaleObject(req.params.id, req.portalUser.usuario_id);
   if (!sale) return res.status(404).json({ error:'Venta no encontrada' });
-  if (!['pagada','integracion_fallida','procesando_integraciones'].includes(sale.estado)) return res.status(409).json({ error:'La venta todavía no tiene un pago aprobado.' });
+  if (!sale?.pago?.transactionCode && !sale?.pago?.confirmadoAt && !['pagada','procesamiento_fallido','validando_firma','generando_factura_visual','factura_visual_generada','procesando_electronica','procesando_tributacion','procesando_integraciones','preparando_entrega'].includes(sale.estado)) return res.status(409).json({ error:'La venta todavía no tiene un pago aprobado.' });
   try { await processPaidSale(sale.id); return res.json(await getSaleObject(sale.id, req.portalUser.usuario_id)); }
   catch (error) { return res.status(502).json({ error:error.message, venta:await getSaleObject(sale.id,req.portalUser.usuario_id) }); }
 }
@@ -557,7 +610,14 @@ async function config(req, res) {
   return res.json({
     serviceName:'Factura Bonita',
     bank:{ checkoutUrl:process.env.BANK_CHECKOUT_URL || 'https://bankyfinanzas.netlify.app/checkout', loginUrl:process.env.BANK_LOGIN_URL || 'https://bankyfinanzas.netlify.app/login', registerUrl:process.env.BANK_REGISTER_URL || 'https://bankyfinanzas.netlify.app/registro/negocio', origin:bankOrigin(), verificationConfigured:Boolean(process.env.BANK_VERIFY_URL), confirmMode:process.env.BANK_CONFIRM_MODE || 'postmessage', ready:false },
-    invoice:{ logoPositions:['left','center','right'] }
+    invoice:{ logoPositions:['left','center','right'] },
+    ecosystem:{
+      digitalSignatureConfigured:Boolean(process.env.DIGITAL_SIGNATURE_VALIDATE_URL),
+      electronicInvoiceConfigured:Boolean(process.env.ELECTRONIC_INVOICE_URL),
+      taxationConfigured:Boolean(process.env.TAXATION_URL),
+      emailConfigured:emailConfigured(),
+      ready:Boolean(process.env.DIGITAL_SIGNATURE_VALIDATE_URL && process.env.ELECTRONIC_INVOICE_URL && process.env.TAXATION_URL && emailConfigured())
+    }
   });
 }
 

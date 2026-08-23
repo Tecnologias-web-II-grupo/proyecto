@@ -50,13 +50,14 @@ export default function App(){
     <header className="site-header">
       <div className="brand-mark">FB</div>
       <div className="brand-copy-ui"><b>Factura Bonita</b><span>Facturas claras para tus ventas</span></div>
-      <button type="button" className="header-guide-button" onClick={()=>setGuideOpen(true)}>Cómo funciona</button>
+      {!me&&<button type="button" className="header-guide-button" onClick={()=>setGuideOpen(true)}>Cómo funciona</button>}
       {me&&<nav className="customer-nav">
-        <button className={tab==='sale'?'active':''} onClick={()=>setTab('sale')}>Nueva venta</button>
-        <button className={tab==='history'?'active':''} onClick={()=>setTab('history')}>Mis facturas</button>
-        <button className={tab==='brand'?'active':''} onClick={()=>setTab('brand')}>Mi logo</button>
-        <button className={tab==='bank'?'active':''} onClick={()=>setTab('bank')}>{me?.perfil?.bankAfiliado?'Cobros':'Cobros · configurar'}</button>
-        <button className="logout" onClick={()=>{setToken('');setMe(null)}}>Salir</button>
+        <button className={tab==='sale'&&!guideOpen?'active':''} onClick={()=>{setGuideOpen(false);setTab('sale')}}>Nueva venta</button>
+        <button className={tab==='history'&&!guideOpen?'active':''} onClick={()=>{setGuideOpen(false);setTab('history')}}>Mis facturas</button>
+        <button className={tab==='brand'&&!guideOpen?'active':''} onClick={()=>{setGuideOpen(false);setTab('brand')}}>Mi logo</button>
+        <button className={tab==='bank'&&!guideOpen?'active':''} onClick={()=>{setGuideOpen(false);setTab('bank')}}>{me?.perfil?.bankAfiliado?'Cobros':'Cobros · configurar'}</button>
+        <button className={guideOpen?'active':''} onClick={()=>setGuideOpen(true)}>Cómo funciona</button>
+        <button className="logout" onClick={()=>{setToken('');setMe(null);setGuideOpen(false)}}>Salir</button>
       </nav>}
     </header>
 

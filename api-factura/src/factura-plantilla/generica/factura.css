@@ -13,10 +13,10 @@ html,body{margin:0;padding:0;background:#fff;color:var(--ink);font-family:Inter,
 
 /* Encabezado simple con logo configurable: izquierda, centro o derecha */
 .hero{padding:14px 30px 12px;border-top:3px solid var(--accent);border-bottom:1px solid var(--line)}
-.logo-line{display:flex;align-items:center;min-height:64px;margin-bottom:8px}
+.logo-line{display:flex;align-items:center;min-height:82px;margin-bottom:8px}
 .logo-left{justify-content:flex-start}.logo-center{justify-content:center}.logo-right{justify-content:flex-end}
-.logo{width:150px;height:64px;display:flex;align-items:center;justify-content:center;overflow:visible;background:transparent}
-.logo img{display:block;max-width:146px;max-height:62px;width:auto;height:auto;object-fit:contain;background:transparent}
+.logo{width:196px;height:82px;display:flex;align-items:center;justify-content:center;overflow:visible;background:transparent}
+.logo img{display:block;max-width:190px;max-height:78px;width:auto;height:auto;object-fit:contain;background:transparent;transform:scale(1.08);transform-origin:center}
 .logo.fallback{width:52px;height:52px;border:1px solid var(--line);border-radius:8px;font-size:18px;font-weight:800;color:var(--accent-dark)}
 .hero-main{display:flex;align-items:flex-end;justify-content:space-between;gap:24px}
 .brand-copy{min-width:0}.brand-copy h1{margin:0 0 4px;font-size:23px;line-height:1.12}.brand-copy p{margin:0;color:var(--muted);font-size:11px;overflow-wrap:anywhere}
@@ -70,7 +70,7 @@ footer{display:flex;justify-content:space-between;gap:12px;padding:10px 30px;bor
 @media print{
   @page{size:A4;margin:10mm}
   .invoice{max-width:none;width:100%}
-  .hero{padding:9px 16px 9px;border-top-width:3px}.logo-line{min-height:52px;margin-bottom:5px}.logo{width:126px;height:52px}.logo img{max-width:122px;max-height:50px}.logo.fallback{width:42px;height:42px}.hero-main{gap:14px}.brand-copy h1{font-size:19px}.brand-copy p{font-size:9.2px}.number{min-width:150px}.number span{font-size:7.4px}.number strong{font-size:20px}
+  .hero{padding:9px 16px 9px;border-top-width:3px}.logo-line{min-height:70px;margin-bottom:5px}.logo{width:174px;height:70px}.logo img{max-width:168px;max-height:66px;transform:scale(1.08)}.logo.fallback{width:46px;height:46px}.hero-main{gap:14px}.brand-copy h1{font-size:19px}.brand-copy p{font-size:9.2px}.number{min-width:150px}.number span{font-size:7.4px}.number strong{font-size:20px}
   .meta{padding:7px 16px 8px}.meta .datum{padding:0 7px}.datum .label{font-size:7.4px}.datum strong{font-size:9px}
   .content{padding:12px 16px 11px}.operation-overview{padding-bottom:9px;margin-bottom:10px;gap:16px}.operation-label,.operation-total span{font-size:6.6px}.operation-copy strong{font-size:14px}.operation-copy small{font-size:8px}.operation-total strong{font-size:22px}
   .section-title h2{font-size:11px;margin-bottom:5px}.items-table th{padding:5px 4px;font-size:7px}.items-table td{padding:5.5px 4px;font-size:7.8px;line-height:1.35}

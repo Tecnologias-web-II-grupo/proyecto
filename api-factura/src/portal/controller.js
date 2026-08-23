@@ -5,7 +5,7 @@ const { hashPassword, verifyPassword, newSessionToken, hashToken } = require('./
 const { ensurePortalSchema } = require('./schema');
 const { ejecutarPipeline, parsePipeline } = require('../services/integrationPipeline');
 const { validarFirmaDigital, solicitarFacturaElectronica, enviarTributacion } = require('../services/ecosystemIntegration');
-const { configured: emailConfigured, entregarDocumentos } = require('../services/emailDelivery');
+const { configured: emailConfigured, entregarFacturaVisual, entregarDocumentos } = require('../services/emailDelivery');
 
 function clean(value, max = 255) { return String(value ?? '').trim().slice(0, max); }
 function dataUrlFromFile(file) {
@@ -457,13 +457,19 @@ async function processPaidSale(saleId) {
   if (row.estado !== 'pagada' && !row.bank_transaction_code && !row.pago_confirmado_at) throw new Error('La venta todavía no tiene un pago aprobado.');
   if (row.estado === 'entregada') return row.factura_id;
 
-  try {
-    // 1) Antes de facturar, el negocio debe estar reconocido por el servicio de firma digital.
-    await pool.execute("UPDATE portal_ventas SET estado='validando_firma', error_detalle=NULL WHERE id=?", [saleId]);
-    const invoiceDraft = await buildInvoiceFromSale(row, row.usuario_id);
-    await validarFirmaDigital({ ventaId:saleId, emisor:invoiceDraft.emisor, venta:row });
+  const ecosystemEnabled = String(process.env.ECOSYSTEM_ENABLED || 'false').toLowerCase() === 'true';
 
-    // 2) Generamos nuestra factura visual. Se guarda internamente, pero aún no se entrega al cliente.
+  try {
+    const invoiceDraft = await buildInvoiceFromSale(row, row.usuario_id);
+
+    // En modo de prueba solo validamos Banco -> Factura Bonita -> correo.
+    // Cuando ECOSYSTEM_ENABLED=true se activa Firma Digital -> Facturación Electrónica -> Tributación.
+    if (ecosystemEnabled) {
+      await pool.execute("UPDATE portal_ventas SET estado='validando_firma', error_detalle=NULL WHERE id=?", [saleId]);
+      await validarFirmaDigital({ ventaId:saleId, emisor:invoiceDraft.emisor, venta:row });
+    }
+
+    // Generamos nuestra factura visual.
     let facturaId = row.factura_id;
     let invoiceBody = invoiceDraft;
     if (!facturaId) {
@@ -483,17 +489,26 @@ async function processPaidSale(saleId) {
 
     const pdfUrl = `${publicAppUrl()}/api/documentos/facturas/${encodeURIComponent(facturaId)}?formato=pdf&plantilla=auto`;
 
-    // 3) El grupo de Facturación Electrónica recibe nuestra factura y devuelve el documento electrónico.
+    if (!ecosystemEnabled) {
+      // Prueba temporal: no esperamos endpoints de otros grupos. Si Banky aprueba,
+      // generamos el PDF y lo enviamos directamente al correo indicado en la venta.
+      await pool.execute("UPDATE portal_ventas SET estado='preparando_entrega' WHERE id=?", [saleId]);
+      await entregarFacturaVisual({
+        ventaId:saleId, to:row.receptor_correo, clienteNombre:row.receptor_nombre, facturaId, pdfUrl
+      });
+      await pool.execute("UPDATE portal_ventas SET estado='entregada', error_detalle=NULL WHERE id=?", [saleId]);
+      return facturaId;
+    }
+
+    // Flujo completo del ecosistema: Facturación Electrónica -> Tributación -> correo con 3 archivos.
     await pool.execute("UPDATE portal_ventas SET estado='procesando_electronica' WHERE id=?", [saleId]);
     const electronica = await solicitarFacturaElectronica({ ventaId:saleId, factura:invoiceBody, facturaId, pdfUrl });
 
-    // 4) La factura electrónica se envía a Tributación/Administración Directa y esperamos acuse.
     await pool.execute("UPDATE portal_ventas SET estado='procesando_tributacion' WHERE id=?", [saleId]);
     const tributacion = await enviarTributacion({
       ventaId:saleId, facturaId, emisor:invoiceBody.emisor, receptor:invoiceBody.receptor, electronica
     });
 
-    // Integraciones adicionales opcionales que el grupo quiera insertar sin cambiar código.
     if (parsePipeline().length) {
       await pool.execute("UPDATE portal_ventas SET estado='procesando_integraciones' WHERE id=?", [saleId]);
       await ejecutarPipeline(row, {
@@ -502,7 +517,6 @@ async function processPaidSale(saleId) {
       });
     }
 
-    // 5) Solo cuando ya tenemos factura visual + electrónica + acuse, se entregan los 3 documentos por correo.
     await pool.execute("UPDATE portal_ventas SET estado='preparando_entrega' WHERE id=?", [saleId]);
     await entregarDocumentos({
       ventaId:saleId, to:row.receptor_correo, clienteNombre:row.receptor_nombre,
@@ -577,8 +591,7 @@ async function recordPaymentResult(req, res) {
   const payload=req.body?.payload||{};
   const status=String(payload.status||'').toLowerCase();
   if (!['rejected','cancelled'].includes(status)) return res.status(400).json({ error:'Resultado bancario no válido para esta operación.' });
-  const detail=status==='rejected' ? `Pago rechazado${payload.rejectionCode?`: ${clean(payload.rejectionCode,80)}`:''}` : null;
-  await pool.execute("UPDATE portal_ventas SET estado='pendiente_pago', pago_payload=?, error_detalle=? WHERE id=?",[JSON.stringify(payload),detail,row.id]);
+  await pool.execute("UPDATE portal_ventas SET estado='pendiente_pago', pago_payload=?, error_detalle=NULL WHERE id=?",[JSON.stringify(payload),row.id]);
   return res.json(await getSaleObject(row.id,row.usuario_id));
 }
 
@@ -612,11 +625,14 @@ async function config(req, res) {
     bank:{ checkoutUrl:process.env.BANK_CHECKOUT_URL || 'https://bankyfinanzas.netlify.app/checkout', loginUrl:process.env.BANK_LOGIN_URL || 'https://bankyfinanzas.netlify.app/login', registerUrl:process.env.BANK_REGISTER_URL || 'https://bankyfinanzas.netlify.app/registro/negocio', origin:bankOrigin(), verificationConfigured:Boolean(process.env.BANK_VERIFY_URL), confirmMode:process.env.BANK_CONFIRM_MODE || 'postmessage', ready:false },
     invoice:{ logoPositions:['left','center','right'] },
     ecosystem:{
+      enabled:String(process.env.ECOSYSTEM_ENABLED || 'false').toLowerCase() === 'true',
       digitalSignatureConfigured:Boolean(process.env.DIGITAL_SIGNATURE_VALIDATE_URL),
       electronicInvoiceConfigured:Boolean(process.env.ELECTRONIC_INVOICE_URL),
       taxationConfigured:Boolean(process.env.TAXATION_URL),
       emailConfigured:emailConfigured(),
-      ready:Boolean(process.env.DIGITAL_SIGNATURE_VALIDATE_URL && process.env.ELECTRONIC_INVOICE_URL && process.env.TAXATION_URL && emailConfigured())
+      ready:String(process.env.ECOSYSTEM_ENABLED || 'false').toLowerCase() !== 'true'
+        ? emailConfigured()
+        : Boolean(process.env.DIGITAL_SIGNATURE_VALIDATE_URL && process.env.ELECTRONIC_INVOICE_URL && process.env.TAXATION_URL && emailConfigured())
     }
   });
 }

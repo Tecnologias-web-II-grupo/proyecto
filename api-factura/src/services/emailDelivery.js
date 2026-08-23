@@ -2,23 +2,50 @@ const tls = require('tls');
 const pool = require('../db/database');
 
 function env(name, fallback='') { return String(process.env[name] || fallback).trim(); }
-function directProvider() { return env('DIRECT_EMAIL_PROVIDER','smtp').toLowerCase(); }
-
+function firstEnv(...names) {
+  for (const name of names) {
+    const value = env(name);
+    if (value) return value;
+  }
+  return '';
+}
+function directProvider() {
+  const explicit = env('DIRECT_EMAIL_PROVIDER').toLowerCase();
+  if (explicit) return explicit;
+  if (firstEnv('GMAIL_USER','EMAIL_USER') && firstEnv('GMAIL_APP_PASSWORD','EMAIL_APP_PASSWORD')) return 'gmail';
+  if (env('RESEND_API_KEY')) return 'resend';
+  return 'smtp';
+}
+function smtpSettings() {
+  const provider = directProvider();
+  const gmail = provider === 'gmail';
+  const user = firstEnv('SMTP_USER','GMAIL_USER','EMAIL_USER');
+  const pass = firstEnv('SMTP_PASS','GMAIL_APP_PASSWORD','EMAIL_APP_PASSWORD');
+  return {
+    host: env('SMTP_HOST', gmail ? 'smtp.gmail.com' : 'smtp.gmail.com'),
+    port: Number(env('SMTP_PORT', gmail ? '465' : '465')),
+    user,
+    pass,
+    fromAddress: firstEnv('SMTP_FROM_EMAIL','EMAIL_FROM_ADDRESS') || user,
+    fromName: env('SMTP_FROM_NAME', env('EMAIL_FROM_NAME','Factura Bonita')),
+  };
+}
 function smtpConfigured() {
-  return Boolean(env('SMTP_HOST') && env('SMTP_USER') && env('SMTP_PASS'));
+  const cfg = smtpSettings();
+  return Boolean(cfg.host && cfg.user && cfg.pass && cfg.fromAddress);
 }
 
 function configured() {
   if (env('EMAIL_DELIVERY_URL')) return true;
   if (directProvider() === 'resend') return Boolean(env('RESEND_API_KEY'));
-  if (directProvider() === 'smtp') return smtpConfigured();
+  if (['smtp','gmail'].includes(directProvider())) return smtpConfigured();
   return false;
 }
 
 function endpointLabel() {
   if (env('EMAIL_DELIVERY_URL')) return env('EMAIL_DELIVERY_URL');
   if (directProvider() === 'resend') return env('RESEND_API_KEY') ? 'https://api.resend.com/emails' : '';
-  if (directProvider() === 'smtp') return smtpConfigured() ? `${env('SMTP_HOST')}:${env('SMTP_PORT','465')}` : '';
+  if (['smtp','gmail'].includes(directProvider())) { const cfg=smtpSettings(); return smtpConfigured() ? `${cfg.host}:${cfg.port}` : ''; }
   return '';
 }
 
@@ -147,13 +174,12 @@ function buildMimeMessage(payload, fromAddress, fromName) {
 }
 
 async function sendWithSmtp(payload) {
-  const host = env('SMTP_HOST','smtp.gmail.com');
-  const port = Number(env('SMTP_PORT','465'));
-  const user = env('SMTP_USER');
-  const pass = env('SMTP_PASS');
-  if (!host || !user || !pass) throw new Error('Falta configurar el correo saliente del sistema.');
-  const fromAddress = env('SMTP_FROM_EMAIL', user);
-  const fromName = env('SMTP_FROM_NAME','Factura Bonita');
+  const { host, port, user, pass, fromAddress, fromName } = smtpSettings();
+  if (!host || !user || !pass || !fromAddress) {
+    const error = new Error('Falta configurar la cuenta emisora de correo del sistema.');
+    error.code = 'EMAIL_SENDER_NOT_CONFIGURED';
+    throw error;
+  }
   const socket = tls.connect({ host, port, servername:host, rejectUnauthorized:true });
   await new Promise((resolve, reject) => {
     const timer = setTimeout(()=>reject(new Error('No fue posible conectar con el servidor de correo.')), 15000);
@@ -185,11 +211,22 @@ async function sendPayload(payload) {
   if (env('EMAIL_DELIVERY_URL')) return sendWithExternalEndpoint(payload);
   const provider = directProvider();
   if (provider === 'resend') return sendWithResend(payload);
-  if (provider === 'smtp') return sendWithSmtp(payload);
+  if (provider === 'smtp' || provider === 'gmail') return sendWithSmtp(payload);
   throw new Error(`Proveedor de correo directo no soportado: ${provider}.`);
 }
 
+function validEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(String(value || '').trim());
+}
+
 async function entregarFacturaVisual({ ventaId, to, clienteNombre, facturaId, pdfUrl }) {
+  to = String(to || '').trim().toLowerCase();
+  if (!validEmail(to)) {
+    await record(ventaId,'fallida','El correo de entrega no tiene un formato válido.');
+    const error = new Error('El correo de entrega no es válido.');
+    error.code = 'INVALID_RECIPIENT_EMAIL';
+    throw error;
+  }
   if (!configured()) {
     await record(ventaId,'pendiente_configuracion','Falta configurar el correo saliente del sistema.');
     const error = new Error('El servicio de entrega por correo aún no está configurado.');
@@ -220,6 +257,13 @@ async function entregarFacturaVisual({ ventaId, to, clienteNombre, facturaId, pd
 }
 
 async function entregarDocumentos({ ventaId, to, clienteNombre, facturaId, pdfUrl, electronica, tributacion }) {
+  to = String(to || '').trim().toLowerCase();
+  if (!validEmail(to)) {
+    await record(ventaId,'fallida','El correo de entrega no tiene un formato válido.');
+    const error = new Error('El correo de entrega no es válido.');
+    error.code = 'INVALID_RECIPIENT_EMAIL';
+    throw error;
+  }
   if (!configured()) {
     await record(ventaId,'pendiente_configuracion','Falta configurar el servicio de entrega por correo.');
     const error = new Error('El servicio de entrega por correo todavía no está configurado.');

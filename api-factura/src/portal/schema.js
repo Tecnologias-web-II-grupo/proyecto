@@ -68,5 +68,11 @@ async function ensurePortalSchema() {
     request_json LONGTEXT NULL,response_json LONGTEXT NULL,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),KEY idx_portal_integraciones_venta (venta_id),CONSTRAINT fk_portal_integracion_venta FOREIGN KEY (venta_id) REFERENCES portal_ventas(id) ON DELETE CASCADE ON UPDATE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+  // Corrige instalaciones antiguas donde mensaje se creó como VARCHAR corto.
+  await pool.query(`ALTER TABLE portal_integraciones
+    MODIFY COLUMN endpoint VARCHAR(1000) NULL,
+    MODIFY COLUMN mensaje TEXT NULL,
+    MODIFY COLUMN request_json LONGTEXT NULL,
+    MODIFY COLUMN response_json LONGTEXT NULL`);
 }
 module.exports = { ensurePortalSchema };

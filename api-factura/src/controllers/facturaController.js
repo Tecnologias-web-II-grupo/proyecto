@@ -37,6 +37,9 @@ async function asegurarEsquemaCompartido() {
   if (!(await columnaExiste('emisor_logo_blanco'))) {
     await pool.query('ALTER TABLE facturas ADD COLUMN emisor_logo_blanco LONGTEXT NULL AFTER emisor_logo');
   }
+  if (!(await columnaExiste('emisor_logo_posicion'))) {
+    await pool.query("ALTER TABLE facturas ADD COLUMN emisor_logo_posicion VARCHAR(10) NOT NULL DEFAULT 'left' AFTER emisor_logo_blanco");
+  }
   if (!(await columnaExiste('referencia_externa'))) {
     await pool.query('ALTER TABLE facturas ADD COLUMN referencia_externa VARCHAR(100) NULL AFTER total_comprobante');
   }
@@ -156,11 +159,11 @@ async function crearFactura(req, res) {
     await conn.execute(
       `INSERT INTO facturas (
         id, fecha_emision, moneda, condicion_venta, medio_pago,
-        emisor_nombre, emisor_tipo_id, emisor_numero_id, emisor_correo, emisor_logo, emisor_logo_blanco,
+        emisor_nombre, emisor_tipo_id, emisor_numero_id, emisor_correo, emisor_logo, emisor_logo_blanco, emisor_logo_posicion,
         receptor_nombre, receptor_tipo_id, receptor_numero_id, receptor_correo,
         total_gravado, total_exento, total_descuentos, total_impuesto, total_comprobante,
         referencia_externa, origen, datos_v44
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         new Date(body.fecha),
@@ -173,6 +176,7 @@ async function crearFactura(req, res) {
         normalizarTexto(body.emisor.correo, 150).toLowerCase(),
         logoEmisor,
         logoBlancoEmisor,
+        ['left','center','right'].includes(String(body.emisor?.logoPosicion || '').toLowerCase()) ? String(body.emisor.logoPosicion).toLowerCase() : 'left',
         normalizarTexto(body.receptor.nombre, 150),
         body.receptor.identificacion?.tipo ? normalizarTexto(body.receptor.identificacion.tipo, 2) : null,
         body.receptor.identificacion?.numero ? encrypt(normalizarTexto(body.receptor.identificacion.numero, 40)) : null,
@@ -240,7 +244,8 @@ async function actualizarLogoFactura(req, res) {
     await asegurarEsquemaCompartido();
     const tienePrincipal = Object.prototype.hasOwnProperty.call(req.body || {}, 'logoUrl') || Object.prototype.hasOwnProperty.call(req.body || {}, 'logo_data');
     const tieneBlanco = Object.prototype.hasOwnProperty.call(req.body || {}, 'logoUrlBlanco') || Object.prototype.hasOwnProperty.call(req.body || {}, 'logo_blanco');
-    if (!tienePrincipal && !tieneBlanco) {
+    const tienePosicion = Object.prototype.hasOwnProperty.call(req.body || {}, 'logoPosicion');
+    if (!tienePrincipal && !tieneBlanco && !tienePosicion) {
       return res.status(400).json({ error: 'No se recibió ningún logo', detalle: 'Envía logo y/o logoBlanco como archivo, o logoUrl/logoUrlBlanco como data URL.' });
     }
 
@@ -254,10 +259,16 @@ async function actualizarLogoFactura(req, res) {
       updates.push('emisor_logo_blanco = ?');
       values.push(normalizarLogo(req.body?.logoUrlBlanco ?? req.body?.logo_blanco ?? null));
     }
+    if (tienePosicion) {
+      const posicion = String(req.body.logoPosicion || '').toLowerCase();
+      if (!['left','center','right'].includes(posicion)) return res.status(400).json({ error: 'Posición de logo inválida' });
+      updates.push('emisor_logo_posicion = ?');
+      values.push(posicion);
+    }
     values.push(id);
     const [result] = await pool.execute(`UPDATE facturas SET ${updates.join(', ')} WHERE id = ?`, values);
     if (!result.affectedRows) return res.status(404).json({ error: 'Factura no encontrada' });
-    return res.json({ id, logoActualizado: tienePrincipal, logoBlancoActualizado: tieneBlanco });
+    return res.json({ id, logoActualizado: tienePrincipal, logoBlancoActualizado: tieneBlanco, logoPosicionActualizada: tienePosicion });
   } catch (err) {
     console.error('[actualizarLogoFactura] error:', err.message);
     return res.status(400).json({ error: 'No se pudo actualizar el logo', detalle: err.message });
@@ -364,6 +375,7 @@ async function obtenerFacturaPorId(id) {
       correo: f.emisor_correo,
       logoUrl: f.emisor_logo || null,
       logoUrlBlanco: f.emisor_logo_blanco || null,
+      logoPosicion: f.emisor_logo_posicion || extEmisor.logoPosicion || 'left',
     },
     receptor: {
       ...extReceptor,

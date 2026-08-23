@@ -1,17 +1,21 @@
 require('./react/registerJsx');
 const express = require('express');
+const path = require('path');
+const fs = require('fs');
 const { renderApiConsole } = require('./ui/api/ApiConsole.jsx');
 require('dotenv').config();
 
 const facturaRoutes = require('./routes/facturaRoutes');
+const portalRoutes = require('./routes/portalRoutes');
+const { ensurePortalSchema } = require('./portal/schema');
 const { asegurarEsquemaCompartido } = require('./controllers/facturaController');
 const { createDocumentRoutes } = require('../document-renderer/routes');
 const { calentarNavegador, obtenerEstadoBrowser, cerrarBrowser } = require('../document-renderer/browserManager');
 const { obtenerEstadoRenderer } = require('../document-renderer/pdfRenderer');
 
 const app = express();
-const API_VERSION = '3.0.0';
-const TEMPLATE_VERSION = 'factura-v44-react-readable-summary-v16';
+const API_VERSION = '4.0.0';
+const TEMPLATE_VERSION = 'factura-v44-react-portal-integrado-v17';
 
 const allowedOrigins = new Set(
   (process.env.FRONTEND_URL || '')
@@ -63,7 +67,7 @@ const contrato = {
   servicio: 'API compartida de facturación al cliente',
   version: API_VERSION,
   templateVersion: TEMPLATE_VERSION,
-  descripcion: 'Registra y consulta facturas y genera un comprobante PDF visual de solo lectura, con perfil opcional v44-visual para validar y mostrar información fiscal ampliada.',
+  descripcion: 'Portal de venta y API REST de facturación al cliente. Permite registrar negocios, configurar el logo, procesar ventas con servicios externos y generar la factura al finalizar el flujo.',
   endpoints: {
     crear: 'POST /api/facturas',
     listar: 'GET /api/facturas?origen=&referenciaExterna=&limit=&offset=',
@@ -73,6 +77,10 @@ const contrato = {
     health: 'GET /health',
     healthDocumentos: 'GET /health/documentos',
     contrato: 'GET /api/contrato',
+    portalRegistro: 'POST /api/portal/auth/register',
+    portalLogin: 'POST /api/portal/auth/login',
+    portalVenta: 'POST /api/portal/ventas',
+    portalBanco: 'POST /api/portal/ventas/:id/pago/iniciar',
   },
   interoperabilidad: {
     origen: 'Identificador opcional del sistema cliente, por ejemplo educontrol.',
@@ -83,7 +91,9 @@ const contrato = {
   },
 };
 
-app.get('/', (req, res) => res.type('html').send(renderApiConsole(contrato)));
+const frontendDist = path.join(__dirname, '..', 'frontend', 'dist');
+if (fs.existsSync(frontendDist)) app.use(express.static(frontendDist));
+
 app.get('/docs', (req, res) => res.type('html').send(renderApiConsole(contrato)));
 app.get('/api/contrato', (req, res) => res.json(contrato));
 app.get('/health', (req, res) => res.json({ status: 'ok', version: API_VERSION, templateVersion: TEMPLATE_VERSION }));
@@ -100,7 +110,19 @@ app.get('/health/documentos', (req, res) => {
 });
 
 app.use('/api/facturas', facturaRoutes);
+app.use('/api/portal', portalRoutes);
 app.use('/api/documentos', createDocumentRoutes());
+
+app.get('/', (req, res) => {
+  const indexFile = path.join(frontendDist, 'index.html');
+  if (fs.existsSync(indexFile)) return res.sendFile(indexFile);
+  return res.type('html').send(renderApiConsole(contrato));
+});
+app.get(/^\/(?!api\/|health(?:\/|$)|docs$).*/, (req, res, next) => {
+  const indexFile = path.join(frontendDist, 'index.html');
+  if (fs.existsSync(indexFile)) return res.sendFile(indexFile);
+  return next();
+});
 
 app.use((err, req, res, next) => {
   console.error('[error]', err.message);
@@ -117,7 +139,7 @@ const PORT = process.env.PORT || 3000;
 if (require.main === module) {
   const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`API compartida de facturación corriendo en el puerto ${PORT}`);
-    Promise.allSettled([asegurarEsquemaCompartido(), calentarNavegador()]);
+    Promise.allSettled([asegurarEsquemaCompartido(), ensurePortalSchema(), calentarNavegador()]);
   });
 
   const cerrar = async () => {

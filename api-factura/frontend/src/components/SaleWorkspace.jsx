@@ -1,20 +1,25 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import InvoiceReadyModal from './InvoiceReadyModal.jsx';
+import { pagarConBanky, describirResultado, aMetodoDePago } from '../services/payments/bankyCheckout.js';
 
 const emptyItem=()=>({tipoItem:'servicio',detalle:'',codigoCabys:'',codigoComercial:'',cantidad:'1',unidadMedida:'Sp',unidadMedidaComercial:'Unidad',tipoTransaccion:'01',precioUnitario:'',descuento:'0',impuestoTarifa:'13',codigoTarifaIVA:'08'});
 const emptyClient={nombre:'',nombreComercial:'',correo:'',tipo:'01',numero:'',actividadEconomica:'',telefono:'',provincia:'',canton:'',distrito:'',otrasSenas:''};
 const money=(n)=>`CRC ${Math.round(Number(n||0)).toLocaleString('es-CR')}`;
 const digits=(v,max=12)=>String(v??'').replace(/\D/g,'').slice(0,max);
 const whole=(v,max=999999999)=>{const d=digits(v,12); if(!d)return ''; return String(Math.min(Number(d),max));};
+const statusLabel={
+  pendiente_pago:'Lista para pagar',esperando_banco:'Esperando pago',pagada:'Pago aprobado',procesando_integraciones:'Preparando factura',integracion_fallida:'Requiere revisión',facturada:'Completada'
+};
 
 export default function SaleWorkspace({ config, me, onCompleted }){
+  const activeKey=`factura_bonita_active_sale_${me?.id||'user'}`;
   const [receptor,setReceptor]=useState(emptyClient);
   const [savedClients,setSavedClients]=useState([]);
   const [items,setItems]=useState([emptyItem()]);
   const [sale,setSale]=useState(null); const [message,setMessage]=useState(''); const [busy,setBusy]=useState(false);
   const [advanced,setAdvanced]=useState(false); const [invoiceReady,setInvoiceReady]=useState(null); const [editing,setEditing]=useState(false);
-  const popup=useRef(null); const poller=useRef(null);
+  const [restoring,setRestoring]=useState(true);
 
   const totals=useMemo(()=>items.reduce((a,i)=>{
     const q=Math.max(parseInt(i.cantidad||0,10)||0,0),p=Math.max(parseInt(i.precioUnitario||0,10)||0,0),d=Math.max(parseInt(i.descuento||0,10)||0,0),t=Math.max(Number(i.impuestoTarifa)||0,0);
@@ -22,10 +27,50 @@ export default function SaleWorkspace({ config, me, onCompleted }){
     return {venta:a.venta+gross,descuento:a.descuento+discount,subtotal:a.subtotal+sub,impuesto:a.impuesto+tax,total:a.total+sub+tax};
   },{venta:0,descuento:0,subtotal:0,impuesto:0,total:0}),[items]);
 
+  function normalizeClientFromSale(current){
+    const r=current?.receptor||{}, u=r.ubicacion||{};
+    return {...emptyClient,nombre:r.nombre||'',nombreComercial:r.nombreComercial||'',correo:r.correo||'',tipo:r.identificacion?.tipo||'01',numero:r.identificacion?.numero||'',actividadEconomica:r.actividadEconomica||'',telefono:r.telefono||'',provincia:u.provincia||'',canton:u.canton||'',distrito:u.distrito||'',otrasSenas:u.otrasSenas||''};
+  }
+  function normalizeItemsFromSale(current){
+    return (current?.items||[]).map(i=>({
+      tipoItem:i.tipoItem||'servicio',detalle:i.detalle||'',codigoCabys:i.codigoCabys||'',codigoComercial:i.codigosComerciales?.[0]?.codigo||'',cantidad:String(i.cantidad??1),unidadMedida:i.unidadMedida||'Sp',unidadMedidaComercial:i.unidadMedidaComercial||'Unidad',tipoTransaccion:i.tipoTransaccion||'01',precioUnitario:String(Math.round(Number(i.precioUnitario||0))),descuento:String(Math.round(Number(i.descuento||0))),impuestoTarifa:String(Number(i.impuestoTarifa??i.impuesto?.tarifa??13)),codigoTarifaIVA:i.impuestos?.[0]?.codigoTarifaIVA||'08'
+    }));
+  }
+  function hydrate(current,{notice=false}={}){
+    if(!current)return;
+    setSale(current); setReceptor(normalizeClientFromSale(current));
+    const restoredItems=normalizeItemsFromSale(current); if(restoredItems.length)setItems(restoredItems);
+    localStorage.setItem(activeKey,current.id);
+    if(notice)setMessage(current.facturaId?'La venta ya tiene una factura disponible.':'Recuperamos la venta que estabas procesando.');
+  }
+
   useEffect(()=>{api('/api/portal/clientes').then(r=>setSavedClients(r.items||[])).catch(()=>{})},[]);
+  useEffect(()=>{
+    let cancelled=false;
+    (async()=>{
+      const id=localStorage.getItem(activeKey);
+      if(!id){setRestoring(false);return;}
+      try{
+        const current=await api(`/api/portal/ventas/${id}`);
+        if(cancelled)return;
+        hydrate(current,{notice:true});
+        const pendingRaw=localStorage.getItem(`${activeKey}:bank-result`);
+        if(pendingRaw&&!current.facturaId){
+          try{
+            const result=JSON.parse(pendingRaw);
+            if(String(result?.status||'').toLowerCase()==='completed') await confirmCompletedPayment(current,result);
+          }catch{}
+        }
+        if(current.facturaId)setInvoiceReady(current.facturaId);
+      }catch{localStorage.removeItem(activeKey);localStorage.removeItem(`${activeKey}:bank-result`)}
+      finally{if(!cancelled)setRestoring(false)}
+    })();
+    return()=>{cancelled=true};
+  },[me?.id]);
+
   function updateItem(index,key,value){setItems(list=>list.map((x,i)=>i===index?{...x,[key]:value}:x))}
   function pickClient(id){const c=savedClients.find(x=>x.id===id); if(!c)return; setReceptor({...emptyClient,...c});}
-  function reset(){setSale(null);setReceptor(emptyClient);setItems([emptyItem()]);setMessage('');setInvoiceReady(null);setAdvanced(false);setEditing(false)}
+  function reset(){localStorage.removeItem(activeKey);localStorage.removeItem(`${activeKey}:bank-result`);setSale(null);setReceptor(emptyClient);setItems([emptyItem()]);setMessage('');setInvoiceReady(null);setAdvanced(false);setEditing(false)}
 
   function validate(){
     if(!receptor.nombre.trim())return 'Indica el nombre o razón social del cliente.';
@@ -51,42 +96,55 @@ export default function SaleWorkspace({ config, me, onCompleted }){
         receptor:{nombre:receptor.nombre,nombreComercial:receptor.nombreComercial,correo:receptor.correo,actividadEconomica:receptor.actividadEconomica,telefono:receptor.telefono,ubicacion:{provincia:receptor.provincia,canton:receptor.canton,distrito:receptor.distrito,otrasSenas:receptor.otrasSenas},identificacion:{tipo:receptor.tipo,numero:receptor.numero}},
         items,moneda:'CRC',condicionVenta:'01',detalleCondicionVenta:'Contado',medioPago:'02',plazoCredito:0
       })});
-      setSale(data);setEditing(false);setMessage(sale?'Cambios guardados. Ya puedes continuar con el pago.':'Venta guardada. Ahora puedes continuar con el pago.');
+      hydrate(data);setEditing(false);setMessage(sale?'Cambios guardados. Ya puedes continuar con el pago.':'Venta guardada. Puedes pagar cuando estés listo.');
       api('/api/portal/clientes').then(r=>setSavedClients(r.items||[])).catch(()=>{});
     }catch(e){setMessage(e.message)}finally{setBusy(false)}
   }
+
+  async function confirmCompletedPayment(current,result){
+    const saleId=current?.id||sale?.id; if(!saleId)return null;
+    localStorage.setItem(`${activeKey}:bank-result`,JSON.stringify(result));
+    setMessage('Pago aprobado. Estamos preparando tu factura...');
+    const data=await api(`/api/portal/ventas/${saleId}/pago/confirmar`,{method:'POST',body:JSON.stringify({sourceOrigin:config?.bank?.origin,payload:result})});
+    localStorage.removeItem(`${activeKey}:bank-result`);
+    hydrate(data);
+    if(data.facturaId)finish(data);
+    return data;
+  }
+
+  async function recordNonCompletedResult(current,result){
+    const saleId=current?.id||sale?.id; if(!saleId)return;
+    try{
+      const data=await api(`/api/portal/ventas/${saleId}/pago/resultado`,{method:'POST',body:JSON.stringify({sourceOrigin:config?.bank?.origin,payload:result})});
+      hydrate(data);
+    }catch{}
+  }
+
   async function pay(){
     if(!sale)return;setBusy(true);setMessage('');
     try{
       const data=await api(`/api/portal/ventas/${sale.id}/pago/iniciar`,{method:'POST'});
       if(data.alreadyCompleted&&data.facturaId){setInvoiceReady(data.facturaId);return}
-      popup.current=window.open(data.checkoutUrl,'bankCheckout','width=560,height=780,resizable=yes,scrollbars=yes');
-      if(!popup.current)throw new Error('El navegador bloqueó la ventana de pago. Habilita las ventanas emergentes e inténtalo de nuevo.');
-      setMessage('Completa el pago en la ventana segura que se abrió.'); beginPolling();
+      const waiting={...sale,estado:'esperando_banco'}; setSale(waiting); localStorage.setItem(activeKey,sale.id);
+      setMessage('Completa el pago en BankyFinanzas. Esta venta permanecerá guardada aunque cierres o recargues esta página.');
+      const result=await pagarConBanky({checkoutUrl:data.checkoutUrl,expectedOrigin:data.expectedOrigin||config?.bank?.origin});
+      const status=String(result?.status||'').toLowerCase();
+      if(status==='completed'){
+        await confirmCompletedPayment(waiting,result);
+      }else{
+        await recordNonCompletedResult(waiting,result);
+        setMessage(describirResultado(result));
+      }
     }catch(e){setMessage(e.message)}finally{setBusy(false)}
   }
-  async function refresh(){if(!sale)return null;try{const current=await api(`/api/portal/ventas/${sale.id}`);setSale(current);if(current.facturaId)finish(current);return current}catch(e){setMessage(e.message);return null}}
-  function finish(current){clearInterval(poller.current);try{popup.current?.close()}catch{};setInvoiceReady(current.facturaId);setMessage('');onCompleted?.()}
-  function beginPolling(){clearInterval(poller.current);poller.current=setInterval(()=>refresh(),2500)}
-  useEffect(()=>()=>clearInterval(poller.current),[]);
-  useEffect(()=>{
-    function onMessage(event){
-      if(!sale)return; const payload=event.data||{};
-      const isBankOrigin=config?.bank?.origin&&event.origin===config.bank.origin;
-      const isReturnBridge=event.origin===window.location.origin&&payload.type==='bank-return';
-      if(!isBankOrigin&&!isReturnBridge)return;
-      if(isReturnBridge){refresh();return}
-      const status=String(payload.status||payload.estado||'').toLowerCase();
-      const ok=payload.paid===true||payload.success===true||['paid','success','completed','aprobado','pagado'].includes(status);
-      if(!ok)return;
-      api(`/api/portal/ventas/${sale.id}/pago/confirmar`,{method:'POST',body:JSON.stringify({sourceOrigin:event.origin,payload})}).then(data=>{setSale(data);if(data.facturaId)finish(data)}).catch(e=>setMessage(e.message));
-    }
-    window.addEventListener('message',onMessage);return()=>window.removeEventListener('message',onMessage);
-  },[sale?.id,config?.bank?.origin]);
+
+  async function refresh(){if(!sale)return null;try{const current=await api(`/api/portal/ventas/${sale.id}`);hydrate(current);if(current.facturaId)finish(current);return current}catch(e){setMessage(e.message);return null}}
+  function finish(current){localStorage.removeItem(activeKey);localStorage.removeItem(`${activeKey}:bank-result`);setInvoiceReady(current.facturaId);setMessage('');onCompleted?.()}
 
   const status=sale?.estado||'nuevo';
+  if(restoring)return <section className="panel sale-panel"><div className="empty-state">Recuperando tu venta...</div></section>;
   return <section className="panel sale-panel">
-    <div className="panel-heading"><div><span className="eyebrow">NUEVA VENTA</span><h2>Registra lo que vas a cobrar</h2><p className="muted">Los datos de <b>{me?.empresa}</b> ya están cargados desde tu cuenta. Completa únicamente el cliente y los conceptos de esta venta.</p></div>{sale&&<span className={`status-chip ${status}`}>{status==='pendiente_pago'?'Lista para pagar':status==='esperando_banco'?'Esperando pago':status==='facturada'?'Completada':'Procesando'}</span>}</div>
+    <div className="panel-heading"><div><span className="eyebrow">NUEVA VENTA</span><h2>Registra lo que vas a cobrar</h2><p className="muted">Los datos de <b>{me?.empresa}</b> ya están cargados desde tu cuenta. Completa únicamente el cliente y los conceptos de esta venta.</p></div>{sale&&<span className={`status-chip ${status}`}>{statusLabel[status]||'Procesando'}</span>}</div>
 
     <div className="seller-strip"><div><span>Emisor</span><strong>{me?.empresa}</strong></div><div><span>Identificación</span><strong>{me?.numeroIdentificacion}</strong></div><div><span>Correo de factura</span><strong>{me?.correoFacturacion}</strong></div></div>
 
@@ -104,7 +162,7 @@ export default function SaleWorkspace({ config, me, onCompleted }){
     <div className="items-editor"><div className="items-title"><div><h3>¿Qué estás vendiendo?</h3><p className="muted small">Agrega cada producto o servicio tal como quieres que aparezca en la factura.</p></div><button className="secondary" onClick={()=>setItems([...items,emptyItem()])}>Agregar concepto</button></div>
       {items.map((i,idx)=><article className="sale-item" key={idx}><div className="item-main polished-item-main">
         <label className="description-field">Descripción<input placeholder="Ej. Servicio de soporte mensual" value={i.detalle} onChange={e=>updateItem(idx,'detalle',e.target.value)} maxLength="255"/></label>
-        <label>CAByS<input inputMode="numeric" placeholder="13 dígitos" value={i.codigoCabys} onChange={e=>updateItem(idx,'codigoCabys',digits(e.target.value,13))}/></label>
+        <label>CAByS<input inputMode="numeric" placeholder="13 dígitos" value={i.codigoCabys} onChange={e=>updateItem(idx,'codigoCabys',digits(e.target.value,13))}/><small className="field-help">Código de 13 dígitos que clasifica el producto o servicio en Costa Rica.</small></label>
         <label>Cantidad<input inputMode="numeric" value={i.cantidad} onChange={e=>updateItem(idx,'cantidad',whole(e.target.value,100000))}/></label>
         <label>Precio unitario<div className="input-affix prefix"><span>₡</span><input inputMode="numeric" placeholder="0" value={i.precioUnitario} onChange={e=>updateItem(idx,'precioUnitario',whole(e.target.value))}/></div></label>
         <label>IVA<select value={i.impuestoTarifa} onChange={e=>updateItem(idx,'impuestoTarifa',e.target.value)}><option value="0">0 %</option><option value="1">1 %</option><option value="2">2 %</option><option value="4">4 %</option><option value="13">13 %</option></select></label>
@@ -113,7 +171,7 @@ export default function SaleWorkspace({ config, me, onCompleted }){
     </div>
 
     </fieldset>
-    <div className="checkout-strip"><div><strong>{sale?(editing?'Editando venta':'Venta guardada'):'Revisa y guarda la venta'}</strong><span>{sale?(editing?'Guarda los cambios antes de pagar.':'El pago se habilita únicamente para una venta guardada.'):'Primero guardamos esta venta; después podrás abrir el cobro.'}</span></div><div className="actions">{!sale?<button className="primary" disabled={busy||totals.total<=0} onClick={create}>Guardar venta</button>:editing?<><button className="primary" disabled={busy||totals.total<=0} onClick={create}>Guardar cambios</button><button className="secondary" onClick={()=>setEditing(false)}>Cancelar edición</button></>:<><button className="bank-button" disabled={busy||status==='facturada'||!config?.bank?.ready} onClick={pay}>Pagar</button><button className="secondary" disabled={status!=='pendiente_pago'} onClick={()=>setEditing(true)}>Editar venta</button><button className="secondary" onClick={refresh}>Actualizar estado</button><button className="link-quiet" onClick={reset}>Nueva venta</button></>}</div></div>
+    <div className="checkout-strip"><div><strong>{sale?(editing?'Editando venta':'Venta guardada'):'Revisa y guarda la venta'}</strong><span>{sale?(editing?'Guarda los cambios antes de pagar.':status==='facturada'?'La factura está lista.':status==='esperando_banco'?'Puedes reabrir el pago si lo necesitas.':'Tus datos permanecen guardados mientras completas el pago.'):'Primero guardamos esta venta; después podrás abrir el cobro.'}</span></div><div className="actions">{!sale?<button className="primary" disabled={busy||totals.total<=0} onClick={create}>Guardar venta</button>:editing?<><button className="primary" disabled={busy||totals.total<=0} onClick={create}>Guardar cambios</button><button className="secondary" onClick={()=>setEditing(false)}>Cancelar edición</button></>:<><button className="bank-button" disabled={busy||status==='facturada'||!config?.bank?.ready} onClick={pay}>{status==='esperando_banco'?'Reabrir pago':'Pagar'}</button><button className="secondary" disabled={status!=='pendiente_pago'} onClick={()=>setEditing(true)}>Editar venta</button><button className="secondary" onClick={refresh}>Actualizar</button><button className="link-quiet" onClick={reset}>Nueva venta</button></>}</div></div>
     {sale&&!editing&&!config?.bank?.ready&&<div className="alert warning">Antes de pagar, configura y confirma la afiliación de tu negocio en la sección <b>Cobros</b>.</div>}
     {message&&<div className="alert info">{message}</div>}{sale?.errorDetalle&&<div className="alert error">{sale.errorDetalle}</div>}
     <InvoiceReadyModal invoiceId={invoiceReady} onClose={()=>setInvoiceReady(null)} onNewSale={reset}/>

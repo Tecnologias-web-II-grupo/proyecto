@@ -14,8 +14,8 @@ const { calentarNavegador, obtenerEstadoBrowser, cerrarBrowser } = require('../d
 const { obtenerEstadoRenderer } = require('../document-renderer/pdfRenderer');
 
 const app = express();
-const API_VERSION = '4.3.0';
-const TEMPLATE_VERSION = 'factura-v44-react-bank-onboarding-v20';
+const API_VERSION = '4.4.0';
+const TEMPLATE_VERSION = 'factura-v44-react-banky-postmessage-v21';
 
 const allowedOrigins = new Set(
   (process.env.FRONTEND_URL || '')
@@ -81,6 +81,7 @@ const contrato = {
     portalLogin: 'POST /api/portal/auth/login',
     portalVenta: 'POST /api/portal/ventas',
     portalBanco: 'POST /api/portal/ventas/:id/pago/iniciar',
+    portalConfirmarPago: 'POST /api/portal/ventas/:id/pago/confirmar',
   },
   interoperabilidad: {
     origen: 'Identificador opcional del sistema cliente, por ejemplo educontrol.',

@@ -5,6 +5,11 @@ async function columnExists(table, column){
   return rows.length>0;
 }
 async function ensureColumn(table,column,definition){ if(!(await columnExists(table,column))) await pool.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`); }
+async function indexExists(table, indexName){
+  const [rows]=await pool.execute(`SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND INDEX_NAME=? LIMIT 1`,[table,indexName]);
+  return rows.length>0;
+}
+async function ensureIndex(table,indexName,sql){ if(!(await indexExists(table,indexName))) await pool.query(sql); }
 
 async function ensurePortalSchema() {
   await pool.query(`CREATE TABLE IF NOT EXISTS portal_usuarios (
@@ -35,6 +40,12 @@ async function ensurePortalSchema() {
     CONSTRAINT fk_portal_venta_factura FOREIGN KEY (factura_id) REFERENCES facturas(id) ON DELETE SET NULL ON UPDATE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
   await ensureColumn('portal_ventas','datos_venta_json','LONGTEXT NULL AFTER items_json');
+  await ensureColumn('portal_ventas','bank_intent_id','VARCHAR(100) NULL AFTER pago_payload');
+  await ensureColumn('portal_ventas','bank_payment_id','VARCHAR(100) NULL AFTER bank_intent_id');
+  await ensureColumn('portal_ventas','bank_transaction_code','VARCHAR(100) NULL AFTER bank_payment_id');
+  await ensureColumn('portal_ventas','pago_confirmado_at','DATETIME NULL AFTER bank_transaction_code');
+  await ensureIndex('portal_ventas','uq_portal_ventas_bank_payment',`ALTER TABLE portal_ventas ADD UNIQUE KEY uq_portal_ventas_bank_payment (bank_payment_id)`);
+  await ensureIndex('portal_ventas','uq_portal_ventas_bank_transaction',`ALTER TABLE portal_ventas ADD UNIQUE KEY uq_portal_ventas_bank_transaction (bank_transaction_code)`);
 
 
   await pool.query(`CREATE TABLE IF NOT EXISTS portal_clientes (

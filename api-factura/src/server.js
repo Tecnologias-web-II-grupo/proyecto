@@ -14,8 +14,8 @@ const { calentarNavegador, obtenerEstadoBrowser, cerrarBrowser } = require('../d
 const { obtenerEstadoRenderer } = require('../document-renderer/pdfRenderer');
 
 const app = express();
-const API_VERSION = '4.8.0';
-const TEMPLATE_VERSION = 'factura-v44-ecosistema-servicios-v25';
+const API_VERSION = '4.8.1';
+const TEMPLATE_VERSION = 'factura-v44-ecosistema-servicios-v26';
 
 const allowedOrigins = new Set(
   (process.env.FRONTEND_URL || '')

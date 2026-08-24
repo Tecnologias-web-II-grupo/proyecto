@@ -14,8 +14,8 @@ const { calentarNavegador, obtenerEstadoBrowser, cerrarBrowser } = require('../d
 const { obtenerEstadoRenderer } = require('../document-renderer/pdfRenderer');
 
 const app = express();
-const API_VERSION = '4.10.0';
-const TEMPLATE_VERSION = 'factura-v44-educontrol-original-logo-transparente-v33';
+const API_VERSION = '4.10.2';
+const TEMPLATE_VERSION = 'factura-v44-educontrol-comercial-v34';
 
 const allowedOrigins = new Set(
   (process.env.FRONTEND_URL || '')

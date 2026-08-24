@@ -26,6 +26,70 @@ const integrationLabel={firma_digital:'Firma digital',facturacion_electronica:'F
 const doneStates=new Set(['completada']);
 
 
+async function submitInvoiceByFormAction({ invoiceId, customerEmail, ownerEmail }){
+  if(!invoiceId)throw new Error('La factura todavía no está lista.');
+  if(!/^\S+@\S+\.\S+$/.test(String(customerEmail||'')))throw new Error('El correo de entrega no es válido.');
+  if(!/^\S+@\S+\.\S+$/.test(String(ownerEmail||'')))throw new Error('El correo del negocio no es válido para iniciar el envío.');
+
+  const pdfResponse=await fetch(`/api/documentos/facturas/${encodeURIComponent(invoiceId)}?formato=pdf&plantilla=generica`);
+  if(!pdfResponse.ok)throw new Error('No se pudo preparar el PDF para el correo.');
+  const blob=await pdfResponse.blob();
+  const file=new File([blob],`factura-${invoiceId}.pdf`,{type:'application/pdf'});
+
+  return new Promise((resolve,reject)=>{
+    const frameName=`factura_mail_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const iframe=document.createElement('iframe');
+    iframe.name=frameName;
+    iframe.style.display='none';
+    iframe.setAttribute('aria-hidden','true');
+
+    const form=document.createElement('form');
+    form.method='POST';
+    form.action=`https://formsubmit.co/${encodeURIComponent(ownerEmail)}`;
+    form.target=frameName;
+    form.enctype='multipart/form-data';
+    form.style.display='none';
+
+    const add=(name,value)=>{const input=document.createElement('input');input.type='hidden';input.name=name;input.value=String(value??'');form.appendChild(input)};
+    add('_subject',`Factura ${invoiceId}`);
+    add('_captcha','false');
+    add('_template','table');
+    add('_cc',customerEmail);
+    add('cliente',customerEmail);
+    add('factura',invoiceId);
+    add('mensaje','Adjuntamos la factura correspondiente a la compra realizada.');
+
+    const fileInput=document.createElement('input');
+    fileInput.type='file';
+    fileInput.name='attachment';
+    const transfer=new DataTransfer();
+    transfer.items.add(file);
+    fileInput.files=transfer.files;
+    form.appendChild(fileInput);
+
+    let submitted=false;
+    let settled=false;
+    const cleanup=()=>{setTimeout(()=>{form.remove();iframe.remove()},1200)};
+    const timer=setTimeout(()=>{
+      if(settled)return;
+      settled=true;cleanup();
+      reject(new Error('No se pudo confirmar el envío del formulario de correo.'));
+    },20000);
+
+    iframe.addEventListener('load',()=>{
+      if(!submitted||settled)return;
+      settled=true;clearTimeout(timer);cleanup();
+      resolve({ok:true,to:customerEmail});
+    });
+
+    document.body.appendChild(iframe);
+    document.body.appendChild(form);
+    submitted=true;
+    form.submit();
+  });
+}
+
+
 export default function SaleWorkspace({ config, me, onCompleted }){
   const activeKey=`factura_bonita_active_sale_${me?.id||'user'}`;
   const [receptor,setReceptor]=useState(emptyClient);
@@ -35,6 +99,7 @@ export default function SaleWorkspace({ config, me, onCompleted }){
   const [sale,setSale]=useState(null); const [message,setMessage]=useState(''); const [busy,setBusy]=useState(false);
   const [advanced,setAdvanced]=useState(false); const [invoiceReady,setInvoiceReady]=useState(null); const [editing,setEditing]=useState(false);
   const [restoring,setRestoring]=useState(true);
+  const [deliveryMessage,setDeliveryMessage]=useState('');
 
   const totals=useMemo(()=>items.reduce((a,i)=>{
     const q=Math.max(parseInt(i.cantidad||0,10)||0,0),p=Math.max(parseInt(i.precioUnitario||0,10)||0,0),d=Math.max(parseInt(i.descuento||0,10)||0,0),t=Math.max(Number(i.impuestoTarifa)||0,0);
@@ -92,7 +157,7 @@ export default function SaleWorkspace({ config, me, onCompleted }){
 
   function updateItem(index,key,value){setItems(list=>list.map((x,i)=>i===index?{...x,[key]:value}:x))}
   function pickClient(id){const c=savedClients.find(x=>x.id===id); if(!c)return; setReceptor({...emptyClient,...c});}
-  function reset(){localStorage.removeItem(activeKey);localStorage.removeItem(`${activeKey}:bank-result`);setSale(null);setReceptor(emptyClient);setItems([emptyItem()]);setMessage('');setInvoiceReady(null);setAdvanced(false);setEditing(false)}
+  function reset(){localStorage.removeItem(activeKey);localStorage.removeItem(`${activeKey}:bank-result`);setSale(null);setReceptor(emptyClient);setItems([emptyItem()]);setMessage('');setDeliveryMessage('');setInvoiceReady(null);setAdvanced(false);setEditing(false)}
 
   function validate(){
     if(!receptor.nombre.trim())return 'Indica el nombre o razón social del cliente.';
@@ -126,7 +191,7 @@ export default function SaleWorkspace({ config, me, onCompleted }){
   async function confirmCompletedPayment(current,result){
     const saleId=current?.id||sale?.id; if(!saleId)return null;
     localStorage.setItem(`${activeKey}:bank-result`,JSON.stringify(result));
-    setMessage('Pago aprobado. Estamos validando la firma y procesando los documentos de la operación...');
+    setMessage('Pago aprobado. Estamos preparando la factura y su entrega por correo...');
     try{
       const data=await api(`/api/portal/ventas/${saleId}/pago/confirmar`,{method:'POST',body:JSON.stringify({sourceOrigin:config?.bank?.origin,payload:result})});
       localStorage.removeItem(`${activeKey}:bank-result`);
@@ -167,7 +232,25 @@ export default function SaleWorkspace({ config, me, onCompleted }){
   }
 
   async function refresh(){if(!sale)return null;try{const current=await api(`/api/portal/ventas/${sale.id}`);hydrate(current);if(current.facturaId && current.estado==='entregada')finish(current);return current}catch(e){setMessage(e.message);return null}}
-  function finish(current){localStorage.removeItem(activeKey);localStorage.removeItem(`${activeKey}:bank-result`);setInvoiceReady(current.facturaId);setMessage('');onCompleted?.()}
+  async function finish(current){
+    localStorage.removeItem(activeKey);localStorage.removeItem(`${activeKey}:bank-result`);
+    setInvoiceReady(current.facturaId);setMessage('');onCompleted?.();
+    if(config?.ecosystem?.emailBrowserFormAction && current?.facturaId){
+      const customerEmail=current?.receptor?.correo||receptor.correo;
+      const ownerEmail=me?.correoFacturacion||me?.email;
+      const sentKey=`factura_bonita_form_sent_${current.facturaId}_${customerEmail}`;
+      if(!localStorage.getItem(sentKey)){
+        setDeliveryMessage(`Preparando envío de la factura a ${customerEmail}...`);
+        try{
+          await submitInvoiceByFormAction({invoiceId:current.facturaId,customerEmail,ownerEmail});
+          localStorage.setItem(sentKey,'1');
+          setDeliveryMessage(`Se solicitó el envío de la factura a ${customerEmail}. Si es la primera vez que este negocio usa el canal de correo, revisa una vez el correo del negocio para confirmar la activación.`);
+        }catch(e){
+          setDeliveryMessage(e.message||'No se pudo iniciar el envío de la factura por correo.');
+        }
+      }
+    }
+  }
 
 
   async function retryProcessing(){
@@ -199,7 +282,7 @@ export default function SaleWorkspace({ config, me, onCompleted }){
     const latest={};
     for(const step of sale?.integraciones||[])latest[step.servicio]=step;
     const keys=config?.ecosystem?.enabled?['firma_digital','facturacion_electronica','tributacion','entrega_correo']:['entrega_correo'];
-    return keys.map(key=>({key,label:config?.ecosystem?.enabled?integrationLabel[key]:(key==='entrega_correo'?'Factura por correo':integrationLabel[key]),step:latest[key]||null}));
+    return keys.map(key=>({key,label:config?.ecosystem?.enabled?integrationLabel[key]:(key==='entrega_correo'?(config?.ecosystem?.emailBrowserFormAction?'Factura por correo':config?.ecosystem?.emailTestMode?'Factura de prueba':'Factura por correo'):integrationLabel[key]),step:latest[key]||null}));
   },[sale?.integraciones,config?.ecosystem?.enabled]);
 
   const filteredClients=useMemo(()=>{const q=clientSearch.trim().toLowerCase();return !q?savedClients.slice(0,6):savedClients.filter(c=>`${c.nombre} ${c.numero} ${c.correo}`.toLowerCase().includes(q)).slice(0,6)},[savedClients,clientSearch]);
@@ -213,7 +296,7 @@ export default function SaleWorkspace({ config, me, onCompleted }){
     <fieldset className="sale-lock" disabled={Boolean(sale)&&!editing}><div className="sale-grid">
       <div className="client-form"><div className="section-heading-inline"><div><h3>¿A quién le vendes?</h3><p className="muted small">Estos datos aparecerán como cliente en la factura.</p></div></div>{savedClients.length>0&&<div className="client-picker"><label>Buscar cliente guardado<input value={clientSearch} onChange={e=>setClientSearch(e.target.value)} placeholder="Nombre, identificación o correo" /></label>{clientSearch&&<div className="client-results">{filteredClients.length?filteredClients.map(c=><button type="button" key={c.id} onClick={()=>{pickClient(c.id);setClientSearch('')}}><strong>{c.nombre}</strong><span>{c.numero} · {c.correo}</span></button>):<span className="no-client-match">No encontramos coincidencias.</span>}</div>}</div>}
         <label>Nombre o razón social<input maxLength="160" placeholder="Ej. Empresa Cliente S.A." value={receptor.nombre} onChange={e=>setReceptor({...receptor,nombre:e.target.value})}/></label>
-        <div className="form-grid two"><label>Correo de entrega<input type="email" placeholder="cliente@correo.com" value={receptor.correo} onChange={e=>setReceptor({...receptor,correo:e.target.value})}/><small className="field-help">Aquí se enviará la factura PDF cuando el pago sea aprobado.</small></label><label>Tipo de identificación<select value={receptor.tipo} onChange={e=>setReceptor({...receptor,tipo:e.target.value})}><option value="01">Persona física</option><option value="02">Persona jurídica</option><option value="03">DIMEX</option><option value="04">NITE</option></select></label></div>
+        <div className="form-grid two"><label>Correo de entrega<input type="email" placeholder="cliente@correo.com" value={receptor.correo} onChange={e=>setReceptor({...receptor,correo:e.target.value})}/><small className="field-help">{config?.ecosystem?.emailBrowserFormAction?'Aquí se enviará la factura PDF cuando el pago sea aprobado.':config?.ecosystem?.emailTestMode?'Este correo se valida para la prueba de factura.':'Aquí se enviará la factura PDF cuando el pago sea aprobado.'}</small></label><label>Tipo de identificación<select value={receptor.tipo} onChange={e=>setReceptor({...receptor,tipo:e.target.value})}><option value="01">Persona física</option><option value="02">Persona jurídica</option><option value="03">DIMEX</option><option value="04">NITE</option></select></label></div>
         <label>Número de identificación<input inputMode="numeric" placeholder="Solo números" value={receptor.numero} onChange={e=>setReceptor({...receptor,numero:digits(e.target.value,12)})}/></label>
         <button type="button" className="text-toggle" onClick={()=>setAdvanced(!advanced)}>{advanced?'Ocultar información opcional':'Agregar información opcional del cliente'}</button>
         {advanced&&<div className="advanced-client"><div className="form-grid two"><label>Nombre comercial<input value={receptor.nombreComercial} onChange={e=>setReceptor({...receptor,nombreComercial:e.target.value})}/></label><label>Actividad económica<input inputMode="numeric" value={receptor.actividadEconomica} onChange={e=>setReceptor({...receptor,actividadEconomica:digits(e.target.value,6)})} placeholder="6 dígitos"/></label><label>Teléfono<input inputMode="numeric" value={receptor.telefono} onChange={e=>setReceptor({...receptor,telefono:digits(e.target.value,12)})}/></label><label>Provincia<input value={receptor.provincia} maxLength="80" placeholder="Ej. San José" onChange={e=>setReceptor({...receptor,provincia:e.target.value})}/></label><label>Cantón<input value={receptor.canton} maxLength="80" placeholder="Ej. Escazú" onChange={e=>setReceptor({...receptor,canton:e.target.value})}/></label><label>Distrito<input value={receptor.distrito} maxLength="80" placeholder="Ej. San Rafael" onChange={e=>setReceptor({...receptor,distrito:e.target.value})}/></label></div><label>Dirección / otras señas<input value={receptor.otrasSenas} onChange={e=>setReceptor({...receptor,otrasSenas:e.target.value})}/></label></div>}
@@ -232,10 +315,10 @@ export default function SaleWorkspace({ config, me, onCompleted }){
     </div>
 
     </fieldset>
-    <div className={`checkout-strip ${sale&&!editing?'saved-checkout':''}`}><div className="checkout-copy"><strong>{sale?(editing?'Editando venta':'Venta guardada'):'Revisa y guarda la venta'}</strong><span>{sale?(editing?'Guarda los cambios antes de pagar.':status==='entregada'?('Los documentos fueron enviados al correo del cliente.'):sale?.pago?.transactionCode?('Pago aprobado. Estamos preparando la entrega de los documentos.'):'Tus datos quedan guardados aunque salgas a completar el pago.'):'Primero guardamos esta venta; después podrás cobrarla.'}</span>{sale&&!editing&&<div className="secondary-sale-actions"><button className="link-quiet" disabled={status!=='pendiente_pago'} onClick={()=>setEditing(true)}>Editar venta</button><button className="link-quiet" onClick={reset}>Nueva venta</button></div>}</div>{!sale?<div className="actions"><button className="primary" disabled={busy||totals.total<=0} onClick={create}>Guardar venta</button></div>:editing?<div className="actions"><button className="primary" disabled={busy||totals.total<=0} onClick={create}>Guardar cambios</button><button className="secondary" onClick={()=>setEditing(false)}>Cancelar edición</button></div>:<div className="pay-zone"><span>Total guardado</span><strong>{money(sale.total||totals.total)}</strong><button className="bank-button" disabled={busy||status==='entregada'||Boolean(sale?.pago?.transactionCode)||!config?.bank?.ready} onClick={pay}>{busy?'Procesando...':status==='esperando_banco'?'Continuar pago':'Pagar ahora'}</button></div>}</div>
-    {sale?.pago?.transactionCode&&<div className="process-tracker"><div className="process-tracker-head"><div><strong>{'Entrega de documentos'}</strong><span>{'Los documentos se preparan y se envían al correo registrado para la venta.'}</span></div><span className={`status-chip ${status}`}>{statusLabel[status]||'Procesando'}</span></div><div className="process-steps"><div className="process-step done"><i>✓</i><div><strong>Pago</strong><span>Aprobado por BankyFinanzas</span></div></div>{integrationSteps.map(({key,label,step})=><div className={`process-step ${doneStates.has(step?.estado)?'done':step?.estado==='fallida'||step?.estado==='pendiente_configuracion'?'failed':step?'active':'pending'}`} key={key}><i>{doneStates.has(step?.estado)?'✓':step?.estado==='fallida'||step?.estado==='pendiente_configuracion'?'!':'•'}</i><div><strong>{label}</strong><span>{step?.mensaje||'Pendiente'}</span></div></div>)}</div>{status==='procesamiento_fallido'&&<div className="process-retry"><span>{'El pago fue aprobado. La entrega todavía está pendiente y puede reintentarse.'}</span><button className="secondary" disabled={busy} onClick={retryProcessing}>Reintentar procesamiento</button></div>}</div>}
+    <div className={`checkout-strip ${sale&&!editing?'saved-checkout':''}`}><div className="checkout-copy"><strong>{sale?(editing?'Editando venta':'Venta guardada'):'Revisa y guarda la venta'}</strong><span>{sale?(editing?'Guarda los cambios antes de pagar.':status==='entregada'?(config?.ecosystem?.emailBrowserFormAction?'La factura quedó lista y se inició su entrega al correo indicado.':config?.ecosystem?.emailTestMode?'La factura de prueba quedó lista para ver o guardar.':'Los documentos fueron enviados al correo del cliente.'):sale?.pago?.transactionCode?('Pago aprobado. Estamos preparando la entrega de los documentos.'):'Tus datos quedan guardados aunque salgas a completar el pago.'):'Primero guardamos esta venta; después podrás cobrarla.'}</span>{sale&&!editing&&<div className="secondary-sale-actions"><button className="link-quiet" disabled={status!=='pendiente_pago'} onClick={()=>setEditing(true)}>Editar venta</button><button className="link-quiet" onClick={reset}>Nueva venta</button></div>}</div>{!sale?<div className="actions"><button className="primary" disabled={busy||totals.total<=0} onClick={create}>Guardar venta</button></div>:editing?<div className="actions"><button className="primary" disabled={busy||totals.total<=0} onClick={create}>Guardar cambios</button><button className="secondary" onClick={()=>setEditing(false)}>Cancelar edición</button></div>:<div className="pay-zone"><span>Total guardado</span><strong>{money(sale.total||totals.total)}</strong><button className="bank-button" disabled={busy||status==='entregada'||Boolean(sale?.pago?.transactionCode)||!config?.bank?.ready} onClick={pay}>{busy?'Procesando...':status==='esperando_banco'?'Continuar pago':'Pagar ahora'}</button></div>}</div>
+    {sale?.pago?.transactionCode&&<div className="process-tracker"><div className="process-tracker-head"><div><strong>{config?.ecosystem?.emailBrowserFormAction?'Entrega de factura':config?.ecosystem?.emailTestMode?'Prueba de factura':'Entrega de documentos'}</strong><span>{config?.ecosystem?.emailBrowserFormAction?'La factura PDF se prepara para el correo indicado en la venta.':config?.ecosystem?.emailTestMode?'El correo se valida y la factura se genera para revisarla desde esta interfaz.':'Los documentos se preparan y se envían al correo registrado para la venta.'}</span></div><span className={`status-chip ${status}`}>{statusLabel[status]||'Procesando'}</span></div><div className="process-steps"><div className="process-step done"><i>✓</i><div><strong>Pago</strong><span>Aprobado por BankyFinanzas</span></div></div>{integrationSteps.map(({key,label,step})=><div className={`process-step ${doneStates.has(step?.estado)?'done':step?.estado==='fallida'||step?.estado==='pendiente_configuracion'?'failed':step?'active':'pending'}`} key={key}><i>{doneStates.has(step?.estado)?'✓':step?.estado==='fallida'||step?.estado==='pendiente_configuracion'?'!':'•'}</i><div><strong>{label}</strong><span>{step?.mensaje||'Pendiente'}</span></div></div>)}</div>{status==='procesamiento_fallido'&&<div className="process-retry"><span>{'El pago fue aprobado. La entrega todavía está pendiente y puede reintentarse.'}</span><button className="secondary" disabled={busy} onClick={retryProcessing}>Reintentar procesamiento</button></div>}</div>}
     {sale&&!editing&&!config?.bank?.ready&&<div className="alert warning">Antes de pagar, configura y confirma la afiliación de tu negocio en la sección <b>Cobros</b>.</div>}
-    {message&&<div className="alert info">{message}</div>}{sale?.errorDetalle&&sale?.pago?.transactionCode&&sale.errorDetalle!==message&&<div className="alert error">{sale.errorDetalle}</div>}
+    {message&&<div className="alert info">{message}</div>}{deliveryMessage&&<div className="alert info">{deliveryMessage}</div>}{sale?.errorDetalle&&sale?.pago?.transactionCode&&sale.errorDetalle!==message&&<div className="alert error">{sale.errorDetalle}</div>}
     <InvoiceReadyModal invoiceId={invoiceReady} onClose={()=>setInvoiceReady(null)} onNewSale={reset}/>
   </section>
 }

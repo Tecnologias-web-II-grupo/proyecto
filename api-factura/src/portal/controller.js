@@ -5,7 +5,7 @@ const { hashPassword, verifyPassword, newSessionToken, hashToken } = require('./
 const { ensurePortalSchema } = require('./schema');
 const { ejecutarPipeline, parsePipeline } = require('../services/integrationPipeline');
 const { validarFirmaDigital, solicitarFacturaElectronica, enviarTributacion } = require('../services/ecosystemIntegration');
-const { configured: emailConfigured, entregarFacturaVisual, entregarDocumentos } = require('../services/emailDelivery');
+const { configured: emailConfigured, emailTestMode, browserFormActionMode, entregarFacturaVisual, entregarDocumentos } = require('../services/emailDelivery');
 
 function clean(value, max = 255) { return String(value ?? '').trim().slice(0, max); }
 function dataUrlFromFile(file) {
@@ -637,6 +637,8 @@ async function config(req, res) {
       electronicInvoiceConfigured:Boolean(process.env.ELECTRONIC_INVOICE_URL),
       taxationConfigured:Boolean(process.env.TAXATION_URL),
       emailConfigured:emailConfigured(),
+      emailTestMode:emailTestMode(),
+      emailBrowserFormAction:browserFormActionMode(),
       ready:String(process.env.ECOSYSTEM_ENABLED || 'false').toLowerCase() !== 'true'
         ? emailConfigured()
         : Boolean(process.env.DIGITAL_SIGNATURE_VALIDATE_URL && process.env.ELECTRONIC_INVOICE_URL && process.env.TAXATION_URL && emailConfigured())

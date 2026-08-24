@@ -35,7 +35,12 @@ function smtpConfigured() {
   return Boolean(cfg.host && cfg.user && cfg.pass && cfg.fromAddress);
 }
 
+function browserFormActionMode() { return String(process.env.EMAIL_BROWSER_FORM_ACTION || 'true').toLowerCase() === 'true'; }
+function emailTestMode() { return String(process.env.EMAIL_TEST_MODE || 'false').toLowerCase() === 'true'; }
+
 function configured() {
+  if (browserFormActionMode()) return true;
+  if (emailTestMode()) return true;
   if (env('EMAIL_DELIVERY_URL')) return true;
   if (directProvider() === 'resend') return Boolean(env('RESEND_API_KEY'));
   if (['smtp','gmail'].includes(directProvider())) return smtpConfigured();
@@ -43,6 +48,8 @@ function configured() {
 }
 
 function endpointLabel() {
+  if (browserFormActionMode()) return 'form-action-browser';
+  if (emailTestMode()) return 'modo-prueba';
   if (env('EMAIL_DELIVERY_URL')) return env('EMAIL_DELIVERY_URL');
   if (directProvider() === 'resend') return env('RESEND_API_KEY') ? 'https://api.resend.com/emails' : '';
   if (['smtp','gmail'].includes(directProvider())) { const cfg=smtpSettings(); return smtpConfigured() ? `${cfg.host}:${cfg.port}` : ''; }
@@ -236,6 +243,16 @@ async function entregarFacturaVisual({ ventaId, to, clienteNombre, facturaId, pd
   await record(ventaId,'procesando',`Preparando factura visual para ${to}.`);
   const pdf = await bufferFromUrl(pdfUrl);
   if (!pdf) throw new Error('No fue posible generar el PDF que se enviará por correo.');
+  if (browserFormActionMode()) {
+    const body = { success:true, provider:'browser-form-action', requiresBrowserSubmit:true, to, facturaId, pdfUrl };
+    await record(ventaId,'completada',`Factura preparada para entrega a ${to}.`,body);
+    return body;
+  }
+  if (emailTestMode()) {
+    const body = { success:true, provider:'test', simulated:true, to, facturaId, pdfUrl };
+    await record(ventaId,'completada',`Prueba completada para ${to}. La factura quedó disponible en la interfaz.`,body);
+    return body;
+  }
   const payload = {
     to,
     subject:`Factura ${facturaId} - Factura Bonita`,
@@ -275,6 +292,11 @@ async function entregarDocumentos({ ventaId, to, clienteNombre, facturaId, pdfUr
   const xml = await documentBuffer({ content:electronica.xml, base64:electronica.xmlBase64, url:electronica.url });
   const receipt = await documentBuffer({ content:tributacion.receipt, base64:tributacion.receiptBase64, url:tributacion.receiptUrl });
   if (!pdf || !xml || !receipt) throw new Error('No fue posible reunir los documentos requeridos para la entrega al cliente.');
+  if (emailTestMode()) {
+    const body = { success:true, provider:'test', simulated:true, to, facturaId, pdfUrl };
+    await record(ventaId,'completada',`Prueba completada para ${to}. Los documentos quedaron disponibles en la interfaz.`,body);
+    return body;
+  }
   const payload = {
     to,
     subject:`Documentos de su compra - ${facturaId}`,
@@ -297,4 +319,4 @@ async function entregarDocumentos({ ventaId, to, clienteNombre, facturaId, pdfUr
   }
 }
 
-module.exports = { configured, entregarFacturaVisual, entregarDocumentos };
+module.exports = { configured, emailTestMode, browserFormActionMode, entregarFacturaVisual, entregarDocumentos };

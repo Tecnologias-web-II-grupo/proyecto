@@ -28,65 +28,50 @@ const doneStates=new Set(['completada']);
 
 async function submitInvoiceByFormAction({ invoiceId, customerEmail, ownerEmail }){
   if(!invoiceId)throw new Error('La factura todavía no está lista.');
-  if(!/^\S+@\S+\.\S+$/.test(String(customerEmail||'')))throw new Error('El correo de entrega no es válido.');
-  if(!/^\S+@\S+\.\S+$/.test(String(ownerEmail||'')))throw new Error('El correo del negocio no es válido para iniciar el envío.');
+  customerEmail=String(customerEmail||'').trim().toLowerCase();
+  ownerEmail=String(ownerEmail||'').trim().toLowerCase();
+  if(!/^\S+@\S+\.\S+$/.test(customerEmail))throw new Error('El correo de entrega no es válido.');
+  if(!/^\S+@\S+\.\S+$/.test(ownerEmail))throw new Error('El correo del negocio no es válido para habilitar el canal de entrega.');
 
   const pdfResponse=await fetch(`/api/documentos/facturas/${encodeURIComponent(invoiceId)}?formato=pdf&plantilla=generica`);
   if(!pdfResponse.ok)throw new Error('No se pudo preparar el PDF para el correo.');
   const blob=await pdfResponse.blob();
   const file=new File([blob],`factura-${invoiceId}.pdf`,{type:'application/pdf'});
 
-  return new Promise((resolve,reject)=>{
-    const frameName=`factura_mail_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-    const iframe=document.createElement('iframe');
-    iframe.name=frameName;
-    iframe.style.display='none';
-    iframe.setAttribute('aria-hidden','true');
+  const formData=new FormData();
+  formData.append('_subject',`Factura ${invoiceId}`);
+  formData.append('_template','table');
+  formData.append('_cc',customerEmail);
+  formData.append('_replyto',customerEmail);
+  formData.append('email',customerEmail);
+  formData.append('cliente',customerEmail);
+  formData.append('factura',invoiceId);
+  formData.append('mensaje','Adjuntamos la factura correspondiente a la compra realizada.');
+  formData.append('attachment',file,file.name);
 
-    const form=document.createElement('form');
-    form.method='POST';
-    form.action=`https://formsubmit.co/${encodeURIComponent(ownerEmail)}`;
-    form.target=frameName;
-    form.enctype='multipart/form-data';
-    form.style.display='none';
-
-    const add=(name,value)=>{const input=document.createElement('input');input.type='hidden';input.name=name;input.value=String(value??'');form.appendChild(input)};
-    add('_subject',`Factura ${invoiceId}`);
-    add('_captcha','false');
-    add('_template','table');
-    add('_cc',customerEmail);
-    add('cliente',customerEmail);
-    add('factura',invoiceId);
-    add('mensaje','Adjuntamos la factura correspondiente a la compra realizada.');
-
-    const fileInput=document.createElement('input');
-    fileInput.type='file';
-    fileInput.name='attachment';
-    const transfer=new DataTransfer();
-    transfer.items.add(file);
-    fileInput.files=transfer.files;
-    form.appendChild(fileInput);
-
-    let submitted=false;
-    let settled=false;
-    const cleanup=()=>{setTimeout(()=>{form.remove();iframe.remove()},1200)};
-    const timer=setTimeout(()=>{
-      if(settled)return;
-      settled=true;cleanup();
-      reject(new Error('No se pudo confirmar el envío del formulario de correo.'));
-    },20000);
-
-    iframe.addEventListener('load',()=>{
-      if(!submitted||settled)return;
-      settled=true;clearTimeout(timer);cleanup();
-      resolve({ok:true,to:customerEmail});
+  let response;
+  try{
+    response=await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(ownerEmail)}`,{
+      method:'POST',
+      body:formData,
+      headers:{Accept:'application/json'}
     });
+  }catch{
+    throw new Error('No fue posible contactar el servicio de entrega por correo.');
+  }
 
-    document.body.appendChild(iframe);
-    document.body.appendChild(form);
-    submitted=true;
-    form.submit();
-  });
+  let body={};
+  try{body=await response.json()}catch{}
+  const text=String(body?.message||body?.error||'').trim();
+  if(!response.ok || body?.success===false){
+    if(/activ|confirm/i.test(text)){
+      const error=new Error('El correo del negocio debe activar una sola vez el canal de entrega. Revisa su bandeja de entrada y luego reintenta.');
+      error.code='FORM_ACTIVATION_REQUIRED';
+      throw error;
+    }
+    throw new Error(text||`No se pudo solicitar el envío de la factura (HTTP ${response.status}).`);
+  }
+  return {ok:true,to:customerEmail,provider:'formsubmit',message:text||'Solicitud aceptada'};
 }
 
 
@@ -244,7 +229,7 @@ export default function SaleWorkspace({ config, me, onCompleted }){
         try{
           await submitInvoiceByFormAction({invoiceId:current.facturaId,customerEmail,ownerEmail});
           localStorage.setItem(sentKey,'1');
-          setDeliveryMessage(`Se solicitó el envío de la factura a ${customerEmail}. Si es la primera vez que este negocio usa el canal de correo, revisa una vez el correo del negocio para confirmar la activación.`);
+          setDeliveryMessage(`Factura enviada al correo indicado: ${customerEmail}.`);
         }catch(e){
           setDeliveryMessage(e.message||'No se pudo iniciar el envío de la factura por correo.');
         }

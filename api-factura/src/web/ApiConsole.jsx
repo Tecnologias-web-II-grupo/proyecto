@@ -7,7 +7,7 @@ function ApiConsole({ contrato }) {
     ['POST', '/api/facturas', 'Registra una factura desde JSON o multipart/form-data.'],
     ['GET', '/api/facturas/:id', 'Devuelve la factura completa en JSON para otros servicios.'],
     ['GET', '/api/facturas', 'Lista facturas y permite filtrar por origen o referencia.'],
-    ['GET', '/api/documentos/facturas/:id?formato=pdf&plantilla=auto', 'Genera el comprobante PDF de solo lectura.'],
+    ['GET', '/api/documentos/facturas/:id?formato=pdf|html&plantilla=auto', 'Genera el PDF; formato=html ofrece una vista imprimible de respaldo.'],
     ['PATCH', '/api/facturas/:id/logo', 'Carga o reemplaza el logo del emisor.'],
     ['GET', '/api/contrato', 'Contrato técnico del servicio en JSON.'],
     ['GET', '/health', 'Estado general de la API.'],

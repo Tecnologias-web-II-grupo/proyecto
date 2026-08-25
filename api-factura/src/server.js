@@ -14,7 +14,7 @@ const { calentarNavegador, obtenerEstadoBrowser, cerrarBrowser } = require('../d
 const { obtenerEstadoRenderer } = require('../document-renderer/pdfRenderer');
 
 const app = express();
-const API_VERSION = '4.10.2';
+const API_VERSION = '4.10.3';
 const TEMPLATE_VERSION = 'factura-v44-educontrol-comercial-v34';
 
 const allowedOrigins = new Set(
@@ -72,7 +72,7 @@ const contrato = {
     crear: 'POST /api/facturas',
     listar: 'GET /api/facturas?origen=&referenciaExterna=&limit=&offset=',
     consultarJson: 'GET /api/facturas/:id',
-    documentoPdf: 'GET /api/documentos/facturas/:id?formato=pdf&plantilla=auto|educontrol|generica',
+    documentoPdf: 'GET /api/documentos/facturas/:id?formato=pdf|html&plantilla=auto|educontrol|generica',
     actualizarLogo: 'PATCH /api/facturas/:id/logo (logo principal y/o logo blanco; JSON data URL o multipart/form-data)',
     health: 'GET /health',
     healthDocumentos: 'GET /health/documentos',
@@ -103,10 +103,16 @@ app.get('/health', (req, res) => res.json({ status: 'ok', version: API_VERSION, 
 app.get('/health/documentos', (req, res) => {
   const browser = obtenerEstadoBrowser();
   const renderer = obtenerEstadoRenderer();
-  res.status(browser.chrome ? 200 : 503).json({
-    status: browser.chrome ? 'ok' : 'chrome_no_disponible',
+  const pdfDisponible = Boolean(browser.chrome);
+  res.status(200).json({
+    status: pdfDisponible ? 'ok' : 'degraded',
     version: API_VERSION,
     templateVersion: TEMPLATE_VERSION,
+    pdfDisponible,
+    htmlDisponible: true,
+    detalle: pdfDisponible
+      ? 'PDF y vista HTML disponibles.'
+      : 'La vista HTML está disponible; el motor PDF se está preparando o requiere reinicio.',
     ...browser,
     renderer,
   });

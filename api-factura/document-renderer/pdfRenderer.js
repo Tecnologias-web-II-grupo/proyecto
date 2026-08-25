@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { obtenerBrowser } = require('./browserManager');
+const { obtenerBrowser, cerrarBrowser } = require('./browserManager');
 
 const MAX_CONCURRENCY = Math.min(Math.max(Number(process.env.PDF_MAX_CONCURRENCY || 2), 1), 6);
 const MAX_QUEUE = Math.min(Math.max(Number(process.env.PDF_MAX_QUEUE || 40), 2), 200);
@@ -54,18 +54,30 @@ function liberarSlot() {
   if (siguiente) siguiente();
 }
 
-async function renderPdf(html) {
-  await adquirirSlot();
+function errorRecuperableDeBrowser(error) {
+  const texto = String(error?.message || error || '').toLowerCase();
+  return [
+    'target closed',
+    'browser has disconnected',
+    'session closed',
+    'connection closed',
+    'protocol error',
+    'most likely the page has been closed'
+  ].some((fragmento) => texto.includes(fragmento));
+}
+
+async function renderPdfUnaVez(html) {
   let page;
   try {
     const browser = await obtenerBrowser();
     page = await browser.newPage();
-    page.setDefaultNavigationTimeout(Number(process.env.DOCUMENT_RENDERER_TIMEOUT_MS || 15000));
-    page.setDefaultTimeout(Number(process.env.DOCUMENT_RENDERER_TIMEOUT_MS || 15000));
+    const timeoutMs = Number(process.env.DOCUMENT_RENDERER_TIMEOUT_MS || 30000);
+    page.setDefaultNavigationTimeout(timeoutMs);
+    page.setDefaultTimeout(timeoutMs);
 
     await page.setContent(html, {
       waitUntil: 'domcontentloaded',
-      timeout: Number(process.env.DOCUMENT_RENDERER_TIMEOUT_MS || 15000),
+      timeout: timeoutMs,
     });
 
     await page.evaluate(async () => {
@@ -73,7 +85,7 @@ async function renderPdf(html) {
       await Promise.all(images.map((img) => {
         if (img.complete) return Promise.resolve();
         return new Promise((resolve) => {
-          const timeout = setTimeout(resolve, 2000);
+          const timeout = setTimeout(resolve, 2500);
           const terminar = () => { clearTimeout(timeout); resolve(); };
           img.addEventListener('load', terminar, { once: true });
           img.addEventListener('error', terminar, { once: true });
@@ -91,6 +103,21 @@ async function renderPdf(html) {
     });
   } finally {
     if (page) await page.close().catch(() => {});
+  }
+}
+
+async function renderPdf(html) {
+  await adquirirSlot();
+  try {
+    try {
+      return await renderPdfUnaVez(html);
+    } catch (error) {
+      if (!errorRecuperableDeBrowser(error)) throw error;
+      console.warn('[document-renderer] Reiniciando Chrome después de un fallo recuperable:', error.message);
+      await cerrarBrowser().catch(() => {});
+      return await renderPdfUnaVez(html);
+    }
+  } finally {
     liberarSlot();
   }
 }

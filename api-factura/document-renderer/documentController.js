@@ -19,8 +19,8 @@ function createDocumentController(dependencies = {}) {
       if (!id || id.length > 128 || !ID_PATTERN.test(id)) {
         throw new RendererError('Identificador de factura inválido', 400, 'ID_INVALIDO');
       }
-      if (formato !== 'pdf') {
-        throw new RendererError('Por el momento este servicio entrega únicamente facturas en PDF', 400, 'FORMATO_INVALIDO');
+      if (!['pdf', 'html'].includes(formato)) {
+        throw new RendererError('Formato inválido. Usa pdf o html', 400, 'FORMATO_INVALIDO');
       }
 
       const factura = await facturaProvider.obtenerPorId(id);
@@ -30,6 +30,19 @@ function createDocumentController(dependencies = {}) {
       const render = await htmlRenderer(factura, { plantilla: plantillaSolicitada });
       const html = typeof render === 'string' ? render : render.html;
       const plantilla = typeof render === 'string' ? plantillaSolicitada : render.plantilla;
+
+      if (formato === 'html') {
+        res.set({
+          'Content-Type': 'text/html; charset=utf-8',
+          'Content-Disposition': `inline; filename="factura-${id}.html"`,
+          'Cache-Control': 'private, max-age=120',
+          'X-Content-Type-Options': 'nosniff',
+          'X-Factura-Plantilla': plantilla,
+          'X-Factura-Render-Mode': 'html',
+        });
+        return res.status(200).send(html);
+      }
+
       const pdf = await pdfRenderer(html);
 
       res.set({
@@ -39,6 +52,7 @@ function createDocumentController(dependencies = {}) {
         'Cache-Control': 'private, max-age=300',
         'X-Content-Type-Options': 'nosniff',
         'X-Factura-Plantilla': plantilla,
+        'X-Factura-Render-Mode': 'pdf',
       });
       return res.status(200).send(pdf);
     } catch (error) {

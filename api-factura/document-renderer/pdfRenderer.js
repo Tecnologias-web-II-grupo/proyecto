@@ -1,8 +1,8 @@
 const crypto = require('crypto');
 const { obtenerBrowser, cerrarBrowser } = require('./browserManager');
 
-const MAX_CONCURRENCY = Math.min(Math.max(Number(process.env.PDF_MAX_CONCURRENCY || 2), 1), 6);
-const MAX_QUEUE = Math.min(Math.max(Number(process.env.PDF_MAX_QUEUE || 40), 2), 200);
+const MAX_CONCURRENCY = Math.min(Math.max(Number(process.env.PDF_MAX_CONCURRENCY || 1), 1), 4);
+const MAX_QUEUE = Math.min(Math.max(Number(process.env.PDF_MAX_QUEUE || 100), 10), 300);
 const CACHE_TTL_MS = Math.max(Number(process.env.PDF_CACHE_TTL_MS || 5 * 60 * 1000), 0);
 const CACHE_MAX = Math.min(Math.max(Number(process.env.PDF_CACHE_MAX || 40), 5), 200);
 
@@ -71,7 +71,7 @@ async function renderPdfUnaVez(html) {
   try {
     const browser = await obtenerBrowser();
     page = await browser.newPage();
-    const timeoutMs = Number(process.env.DOCUMENT_RENDERER_TIMEOUT_MS || 30000);
+    const timeoutMs = Number(process.env.DOCUMENT_RENDERER_TIMEOUT_MS || 45000);
     page.setDefaultNavigationTimeout(timeoutMs);
     page.setDefaultTimeout(timeoutMs);
 

@@ -52,6 +52,29 @@ async function asegurarEsquemaCompartido() {
   if (!(await indiceExiste('idx_facturas_origen_referencia'))) {
     await pool.query('CREATE INDEX idx_facturas_origen_referencia ON facturas (origen, referencia_externa)');
   }
+
+  // La referencia externa es la clave idempotente entre sistemas. En bases sin
+  // duplicados históricos se protege también a nivel SQL para que dos procesos
+  // concurrentes nunca creen dos facturas para el mismo cargo.
+  if (!(await indiceExiste('uq_facturas_origen_referencia'))) {
+    const [[duplicados]] = await pool.query(
+      `SELECT COUNT(*) AS total FROM (
+         SELECT origen, referencia_externa
+         FROM facturas
+         WHERE origen IS NOT NULL AND referencia_externa IS NOT NULL
+         GROUP BY origen, referencia_externa
+         HAVING COUNT(*) > 1
+       ) d`
+    );
+    if (Number(duplicados?.total || 0) === 0) {
+      try {
+        await pool.query('CREATE UNIQUE INDEX uq_facturas_origen_referencia ON facturas (origen, referencia_externa)');
+      } catch (error) {
+        // Otra petición pudo crear el índice entre la comprobación y el ALTER.
+        if (!['ER_DUP_KEYNAME', 'ER_DUP_ENTRY'].includes(error?.code)) throw error;
+      }
+    }
+  }
 }
 
 function normalizarTexto(valor, maximo) {

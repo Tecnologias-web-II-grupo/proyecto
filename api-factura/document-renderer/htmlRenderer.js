@@ -28,12 +28,17 @@ function validarFactura(factura) {
 }
 
 function resolverPlantilla(factura, solicitada = 'auto') {
-  const valor = String(solicitada || 'auto').trim().toLowerCase();
+  let valor = String(solicitada || 'auto').trim().toLowerCase();
+
+  // Compatibilidad con integraciones anteriores: EduControl llegó a enviar
+  // plantilla=educontrol. Ya no existe una plantilla exclusiva para la escuela;
+  // cualquier alias histórico se resuelve a la plantilla genérica completa.
+  if (['educontrol', 'default', 'factura', 'completa'].includes(valor)) valor = 'generica';
+
   if (!['auto', 'generica'].includes(valor)) {
     throw new RendererError('Plantilla inválida. Usa auto o generica', 400, 'PLANTILLA_INVALIDA');
   }
 
-  // Factura Bonita usa una sola plantilla completa y multi-cliente.
   return 'generica';
 }
 

@@ -1,6 +1,7 @@
 const pool = require('../db/database');
 const { encrypt, decrypt } = require('../middleware/crypto');
 const { randomUUID } = require('crypto');
+const { accountByApiKey } = require('../portal/apiKey');
 
 async function columnaExiste(nombre) {
   const [[row]] = await pool.query(
@@ -48,6 +49,12 @@ async function asegurarEsquemaCompartido() {
   }
   if (!(await columnaExiste('datos_v44'))) {
     await pool.query('ALTER TABLE facturas ADD COLUMN datos_v44 LONGTEXT NULL AFTER origen');
+  }
+  if (!(await columnaExiste('portal_usuario_id'))) {
+    await pool.query('ALTER TABLE facturas ADD COLUMN portal_usuario_id CHAR(36) NULL AFTER origen');
+  }
+  if (!(await indiceExiste('idx_facturas_portal_usuario'))) {
+    await pool.query('CREATE INDEX idx_facturas_portal_usuario ON facturas (portal_usuario_id)');
   }
   if (!(await indiceExiste('idx_facturas_origen_referencia'))) {
     await pool.query('CREATE INDEX idx_facturas_origen_referencia ON facturas (origen, referencia_externa)');
@@ -136,6 +143,11 @@ async function buscarPorReferencia(origen, referencia, connection = pool) {
 
 async function crearFactura(req, res) {
   const body = req.body || {};
+  const apiKey = String(req.headers['x-api-key'] || '').trim();
+  const portalAccount = apiKey ? await accountByApiKey(apiKey) : null;
+  if (apiKey && !portalAccount) {
+    return res.status(401).json({ error: 'Clave de integración de Factura Bonita inválida.' });
+  }
   const origen = origenFactura(body);
   const referenciaExterna = referenciaFactura(body);
   const idSolicitado = normalizarTexto(body.id || '', 20);
@@ -152,8 +164,11 @@ async function crearFactura(req, res) {
     return res.status(500).json({ error: 'No se pudo preparar el esquema de facturación', detalle: error.message });
   }
 
-  const logoEmisor = normalizarLogo(body.emisor?.logoUrl || body.emisor?.logo_data || null);
-  const logoBlancoEmisor = normalizarLogo(body.emisor?.logoUrlBlanco || body.emisor?.logo_blanco || null);
+  const logoEmisor = normalizarLogo(portalAccount?.logo || body.emisor?.logoUrl || body.emisor?.logo_data || null);
+  const logoBlancoEmisor = normalizarLogo(portalAccount?.logo_blanco || body.emisor?.logoUrlBlanco || body.emisor?.logo_blanco || null);
+  const logoPosicion = ['left','center','right'].includes(String(portalAccount?.logo_posicion || body.emisor?.logoPosicion || '').toLowerCase())
+    ? String(portalAccount?.logo_posicion || body.emisor?.logoPosicion).toLowerCase()
+    : 'left';
   const conn = await pool.getConnection();
   const lockName = origen && referenciaExterna
     ? `factura:${Buffer.from(`${origen}|${referenciaExterna}`).toString('base64url').slice(0, 54)}`
@@ -171,6 +186,17 @@ async function crearFactura(req, res) {
 
       const existenteId = await buscarPorReferencia(origen, referenciaExterna, conn);
       if (existenteId) {
+        if (portalAccount?.id) {
+          await conn.execute(
+            `UPDATE facturas
+                SET portal_usuario_id = COALESCE(portal_usuario_id, ?),
+                    emisor_logo = COALESCE(?, emisor_logo),
+                    emisor_logo_blanco = COALESCE(?, emisor_logo_blanco),
+                    emisor_logo_posicion = ?
+              WHERE id = ?`,
+            [portalAccount.id, logoEmisor, logoBlancoEmisor, logoPosicion, existenteId]
+          );
+        }
         const existente = await obtenerFacturaPorId(existenteId);
         res.set('X-Idempotent-Replay', 'true');
         return res.status(200).json(existente);
@@ -185,8 +211,8 @@ async function crearFactura(req, res) {
         emisor_nombre, emisor_tipo_id, emisor_numero_id, emisor_correo, emisor_logo, emisor_logo_blanco, emisor_logo_posicion,
         receptor_nombre, receptor_tipo_id, receptor_numero_id, receptor_correo,
         total_gravado, total_exento, total_descuentos, total_impuesto, total_comprobante,
-        referencia_externa, origen, datos_v44
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        referencia_externa, origen, portal_usuario_id, datos_v44
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         new Date(body.fecha),
@@ -199,7 +225,7 @@ async function crearFactura(req, res) {
         normalizarTexto(body.emisor.correo, 150).toLowerCase(),
         logoEmisor,
         logoBlancoEmisor,
-        ['left','center','right'].includes(String(body.emisor?.logoPosicion || '').toLowerCase()) ? String(body.emisor.logoPosicion).toLowerCase() : 'left',
+        logoPosicion,
         normalizarTexto(body.receptor.nombre, 150),
         body.receptor.identificacion?.tipo ? normalizarTexto(body.receptor.identificacion.tipo, 2) : null,
         body.receptor.identificacion?.numero ? encrypt(normalizarTexto(body.receptor.identificacion.numero, 40)) : null,
@@ -211,6 +237,7 @@ async function crearFactura(req, res) {
         Number(body.totales.totalComprobante || 0),
         referenciaExterna,
         origen,
+        portalAccount?.id || null,
         serializarDatosExtendidos(body),
       ]
     );
@@ -244,6 +271,12 @@ async function crearFactura(req, res) {
     if (err?.code === 'ER_DUP_ENTRY' && origen && referenciaExterna) {
       const existenteId = await buscarPorReferencia(origen, referenciaExterna).catch(() => null);
       if (existenteId) {
+        if (portalAccount?.id) {
+          await pool.execute(
+            `UPDATE facturas SET portal_usuario_id = COALESCE(portal_usuario_id, ?) WHERE id = ?`,
+            [portalAccount.id, existenteId]
+          );
+        }
         res.set('X-Idempotent-Replay', 'true');
         return res.status(200).json(await obtenerFacturaPorId(existenteId));
       }

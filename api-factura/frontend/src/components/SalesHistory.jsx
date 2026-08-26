@@ -1,29 +1,28 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api';
 
-const money=(n)=>`₡${Number(n||0).toLocaleString('es-CR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
-function stateLabel(v){
-  if(v.estado==='entregada')return 'Completado · enviado al cliente';
-  if(v.estado==='procesamiento_fallido')return 'Pagado · requiere reintento';
-  if(v.pago?.transactionCode)return 'Pagado · procesando documentos';
-  if(v.estado==='pendiente_pago')return 'Pendiente de pago';
-  return 'Procesando pago';
-}
+const money=(n)=>`CRC ${Number(n||0).toLocaleString('es-CR',{minimumFractionDigits:0,maximumFractionDigits:2})}`;
 
 async function downloadInvoice(id){
-  const response=await fetch(`/api/documentos/facturas/${id}?formato=pdf&plantilla=generica`);
-  if(!response.ok)throw new Error('No se pudo guardar la factura.');
+  const response=await fetch(`/api/documentos/facturas/${encodeURIComponent(id)}?formato=pdf&plantilla=auto`);
+  if(!response.ok)throw new Error('No se pudo descargar la factura.');
   const blob=await response.blob();
-  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`factura-${id}.pdf`;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=`factura-${id}.pdf`;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
 }
 
-export default function SalesHistory({refreshKey,onBack}){
+export default function SalesHistory({refreshKey}){
   const [items,setItems]=useState([]);const [loading,setLoading]=useState(true);const [error,setError]=useState('');
-  async function load(){setLoading(true);setError('');try{const data=await api('/api/portal/ventas');setItems(data.items||[])}catch(e){setError(e.message)}finally{setLoading(false)}}
+  async function load(){setLoading(true);setError('');try{const data=await api('/api/portal/facturas');setItems(data.items||[])}catch(e){setError(e.message)}finally{setLoading(false)}}
   useEffect(()=>{load()},[refreshKey]);
-  return <section className="panel history-panel">
-    <div className="panel-heading"><div><span className="eyebrow">TUS COMPROBANTES</span><h2>Ventas recientes</h2><p className="muted">Consulta las ventas procesadas y vuelve a abrir o guardar tus facturas.</p></div><div className="actions">{onBack&&<button type="button" className="back-button" onClick={onBack}>← Volver</button>}</div></div>
+
+  return <section className="panel history-panel invoices-only-panel">
+    <div className="panel-heading"><div><span className="eyebrow">TU ARCHIVO</span><h2>Mis facturas</h2><p className="muted">Aquí aparecen los comprobantes creados por los sistemas que utilizan la clave de integración de esta cuenta.</p></div><button type="button" className="secondary" onClick={load}>Actualizar</button></div>
     {error&&<div className="alert error">{error}</div>}
-    {loading?<div className="empty-state">Cargando...</div>:!items.length?<div className="empty-state"><b>Aún no tienes ventas.</b><span>Cuando completes tu primera venta aparecerá aquí.</span></div>:<div className="history-list">{items.map(v=><article key={v.id} className="history-row"><div><strong>{v.receptor?.nombre||'Cliente'}</strong><span>{new Date(v.createdAt).toLocaleString('es-CR')}</span></div><div className="history-amount"><b>{money(v.total)}</b><span>{stateLabel(v)}</span></div><div className="history-actions">{v.facturaId&&v.estado==='entregada'&&<><a className="secondary anchor" target="_blank" rel="noreferrer" href={`/api/documentos/facturas/${v.facturaId}?formato=pdf&plantilla=generica`}>Ver</a><button className="secondary" onClick={()=>downloadInvoice(v.facturaId).catch(e=>setError(e.message))}>Guardar</button></>}</div></article>)}</div>}
+    {loading?<div className="empty-state">Cargando facturas...</div>:!items.length?<div className="empty-state"><b>Aún no hay facturas asociadas.</b><span>Conecta EduControl u otro sistema desde la sección Integración. Cuando genere una factura, aparecerá aquí.</span></div>:<div className="history-list">{items.map(v=><article key={v.id} className="history-row invoice-history-row">
+      <div><strong>{v.receptorNombre||'Cliente'}</strong><span>{new Date(v.createdAt||v.fecha).toLocaleString('es-CR')}</span><small>{v.origen||'sistema externo'}{v.referenciaExterna?` · ${v.referenciaExterna}`:''}</small></div>
+      <div className="history-amount"><b>{money(v.total)}</b>{Number(v.descuento||0)>0&&<span>Descuento: {money(v.descuento)}</span>}<span className="status-chip entregada">PDF disponible</span></div>
+      <div className="history-actions"><a className="secondary anchor" target="_blank" rel="noreferrer" href={v.pdfUrl}>Ver PDF</a><button className="secondary" onClick={()=>downloadInvoice(v.id).catch(e=>setError(e.message))}>Guardar</button></div>
+    </article>)}</div>}
   </section>
 }

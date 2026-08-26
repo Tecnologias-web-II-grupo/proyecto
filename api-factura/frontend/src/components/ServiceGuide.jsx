@@ -4,7 +4,7 @@ const steps=[
   ['1','Crea la cuenta','Registra la empresa que utilizará Factura Bonita.'],
   ['2','Configura el logo','El logo queda asociado a la cuenta y se usa en los PDF generados.'],
   ['3','Copia la clave','Desde Integración obtienes la X-Api-Key de tu negocio.'],
-  ['4','Conecta tu sistema','EduControl u otro sistema envía la factura mediante API REST en JSON.'],
+  ['4','Conecta tu sistema','Tu sistema envía la factura mediante API REST en JSON.'],
   ['5','Consulta el resultado','La factura queda guardada en Mis facturas y disponible como PDF de solo lectura.']
 ];
 

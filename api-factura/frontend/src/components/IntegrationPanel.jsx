@@ -28,7 +28,7 @@ export default function IntegrationPanel({ me, onSaved }) {
 
   return <section className="panel integration-panel">
     <div className="panel-heading">
-      <div><span className="eyebrow">INTEGRACIÓN</span><h2>Conecta tu sistema con Factura Bonita</h2><p className="muted">Usa esta clave desde EduControl u otro sistema autorizado. Las facturas creadas con ella aparecerán en “Mis facturas” y usarán el logo de esta cuenta.</p></div>
+      <div><span className="eyebrow">INTEGRACIÓN</span><h2>Conecta tu sistema con Factura Bonita</h2><p className="muted">Usa esta clave desde tu sistema autorizado. Las facturas creadas con ella aparecerán en “Mis facturas” y usarán el logo de esta cuenta.</p></div>
     </div>
     {error&&<div className="alert error">{error}</div>}
     <div className="integration-account-grid">

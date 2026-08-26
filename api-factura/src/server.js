@@ -15,7 +15,7 @@ const { obtenerEstadoRenderer } = require('../document-renderer/pdfRenderer');
 
 const app = express();
 const API_VERSION = '5.0.0';
-const TEMPLATE_VERSION = 'factura-v44-educontrol-comercial-v34';
+const TEMPLATE_VERSION = 'factura-visual-generica-v1';
 
 const allowedOrigins = new Set(
   (process.env.FRONTEND_URL || '')
@@ -72,7 +72,7 @@ const contrato = {
     crear: 'POST /api/facturas',
     listar: 'GET /api/facturas?origen=&referenciaExterna=&limit=&offset=',
     consultarJson: 'GET /api/facturas/:id',
-    documentoPdf: 'GET /api/documentos/facturas/:id?formato=pdf|html&plantilla=auto|educontrol|generica',
+    documentoPdf: 'GET /api/documentos/facturas/:id?formato=pdf|html&plantilla=auto|generica',
     actualizarLogo: 'PATCH /api/facturas/:id/logo (logo principal y/o logo blanco; JSON data URL o multipart/form-data)',
     health: 'GET /health',
     healthDocumentos: 'GET /health/documentos',
@@ -84,10 +84,10 @@ const contrato = {
     portalRotarApiKey: 'POST /api/portal/integracion/api-key/rotar',
   },
   interoperabilidad: {
-    origen: 'Identificador opcional del sistema cliente, por ejemplo educontrol.',
+    origen: 'Identificador opcional del sistema cliente, por ejemplo sistema-escolar.',
     referenciaExterna: 'Referencia opcional e idempotente del cliente, por ejemplo cargo:42.',
     logo: 'Opcional. Admite dos variantes: emisor.logoUrl / archivo logo para fondos claros y emisor.logoUrlBlanco / archivo logoBlanco para el encabezado oscuro. PNG/JPG/WEBP, máximo 500 KB por variante.',
-    plantillaPdf: 'auto usa EduControl cuando origen=educontrol; para otros sistemas usa la plantilla genérica. Ambas plantillas muestran los campos fiscales ampliados cuando se envían.',
+    plantillaPdf: 'La factura visual usa una única plantilla configurable del servicio. El sistema cliente aporta los datos del emisor, receptor, conceptos, totales y su logo mediante la cuenta vinculada.',
     perfilV44Visual: 'En POST /api/facturas use perfilValidacion=v44-visual para validar el comprobante visual con campos ampliados cuando se proporcionen.',
     autenticacionCliente: 'Si se envía X-Api-Key, la factura queda asociada a la cuenta registrada y usa el logo guardado en ese portal. La referencia externa mantiene idempotencia.',
   },

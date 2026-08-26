@@ -47,8 +47,8 @@
       "request": { "method": "GET", "url": "{{baseUrl}}/api/documentos/facturas/{{facturaId}}?formato=pdf&plantilla=generica" }
     },
     {
-      "name": "6 - PDF EduControl",
-      "request": { "method": "GET", "url": "{{baseUrl}}/api/documentos/facturas/{{facturaId}}?formato=pdf&plantilla=educontrol" }
+      "name": "6 - PDF visual",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/documentos/facturas/{{facturaId}}?formato=pdf&plantilla=auto" }
     }
   ]
 }

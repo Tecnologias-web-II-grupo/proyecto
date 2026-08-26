@@ -14,7 +14,7 @@ const { calentarNavegador, obtenerEstadoBrowser, cerrarBrowser } = require('../d
 const { obtenerEstadoRenderer } = require('../document-renderer/pdfRenderer');
 
 const app = express();
-const API_VERSION = '4.10.4';
+const API_VERSION = '5.0.0';
 const TEMPLATE_VERSION = 'factura-v44-educontrol-comercial-v34';
 
 const allowedOrigins = new Set(
@@ -67,7 +67,7 @@ const contrato = {
   servicio: 'API compartida de facturación al cliente',
   version: API_VERSION,
   templateVersion: TEMPLATE_VERSION,
-  descripcion: 'Portal de venta y API REST de facturación al cliente. Tras el pago, valida firma digital, solicita factura electrónica, espera acuse de Tributación y entrega los documentos al correo del cliente.',
+  descripcion: 'Servicio especializado de factura visual PDF. Los sistemas clientes crean comprobantes por API REST y las cuentas registradas administran su logo y consultan sus facturas.',
   endpoints: {
     crear: 'POST /api/facturas',
     listar: 'GET /api/facturas?origen=&referenciaExterna=&limit=&offset=',
@@ -79,10 +79,9 @@ const contrato = {
     contrato: 'GET /api/contrato',
     portalRegistro: 'POST /api/portal/auth/register',
     portalLogin: 'POST /api/portal/auth/login',
-    portalVenta: 'POST /api/portal/ventas',
-    portalBanco: 'POST /api/portal/ventas/:id/pago/iniciar',
-    portalConfirmarPago: 'POST /api/portal/ventas/:id/pago/confirmar',
-    portalReintentarDocumentos: 'POST /api/portal/ventas/:id/reintentar',
+    portalFacturas: 'GET /api/portal/facturas',
+    portalPerfil: 'PUT /api/portal/perfil',
+    portalRotarApiKey: 'POST /api/portal/integracion/api-key/rotar',
   },
   interoperabilidad: {
     origen: 'Identificador opcional del sistema cliente, por ejemplo educontrol.',
@@ -90,7 +89,7 @@ const contrato = {
     logo: 'Opcional. Admite dos variantes: emisor.logoUrl / archivo logo para fondos claros y emisor.logoUrlBlanco / archivo logoBlanco para el encabezado oscuro. PNG/JPG/WEBP, máximo 500 KB por variante.',
     plantillaPdf: 'auto usa EduControl cuando origen=educontrol; para otros sistemas usa la plantilla genérica. Ambas plantillas muestran los campos fiscales ampliados cuando se envían.',
     perfilV44Visual: 'En POST /api/facturas use perfilValidacion=v44-visual para validar el comprobante visual con campos ampliados cuando se proporcionen.',
-    flujoServicios: 'El portal conserva el pago aprobado y luego coordina firma digital -> factura electrónica -> Tributación -> correo. Los endpoints externos se configuran por variables de entorno.',
+    autenticacionCliente: 'Si se envía X-Api-Key, la factura queda asociada a la cuenta registrada y usa el logo guardado en ese portal. La referencia externa mantiene idempotencia.',
   },
 };
 

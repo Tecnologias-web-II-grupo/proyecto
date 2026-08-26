@@ -4,7 +4,13 @@ import { api, setToken } from '../api';
 const onlyDigits=(v,max)=>String(v||'').replace(/\D/g,'').slice(0,max);
 
 export default function AuthPanel({ onReady }) {
-  const [mode,setMode] = useState('login');
+  const initialMode = (() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      return ['1','true','registro','register'].includes(String(p.get('registro') || p.get('mode') || '').toLowerCase()) ? 'register' : 'login';
+    } catch { return 'login'; }
+  })();
+  const [mode,setMode] = useState(initialMode);
   const [form,setForm] = useState({
     nombre:'', email:'', password:'', empresa:'', tipoIdentificacion:'02', numeroIdentificacion:'', correoFacturacion:'',
     actividadEconomica:'', telefono:'', provincia:'', canton:'', distrito:'', otrasSenas:''
@@ -26,16 +32,35 @@ export default function AuthPanel({ onReady }) {
   async function submit(e){
     e.preventDefault(); setError(''); setLoading(true);
     try{
-      if(mode==='register') await api('/api/portal/auth/register',{method:'POST',body:JSON.stringify(form)});
+      let registration=null;
+      if(mode==='register') registration=await api('/api/portal/auth/register',{method:'POST',body:JSON.stringify(form)});
       const login=await api('/api/portal/auth/login',{method:'POST',body:JSON.stringify({email:form.email,password:form.password})});
-      setToken(login.token); onReady();
+      setToken(login.token);
+
+      if(mode==='register' && registration?.integration?.apiKey && window.opener){
+        try{
+          const params=new URLSearchParams(window.location.search);
+          const requested=params.get('returnUrl');
+          const targetOrigin=requested ? new URL(requested).origin : '';
+          if(targetOrigin && /^https?:\/\//i.test(targetOrigin)){
+            window.opener.postMessage({
+              type:'factura-bonita:registered',
+              apiKey:registration.integration.apiKey,
+              baseUrl:window.location.origin,
+              empresa:registration.empresa
+            },targetOrigin);
+            window.setTimeout(()=>window.close(),450);
+          }
+        }catch{}
+      }
+      onReady();
     }catch(err){setError(err.message)} finally{setLoading(false)}
   }
 
   return <section className="auth-shell"><div className="auth-card">
     <span className="eyebrow">{mode==='login'?'BIENVENIDO':'CREA TU NEGOCIO'}</span>
     <h2>{mode==='login'?'Iniciar sesión':'Crear tu cuenta'}</h2>
-    <p className="muted">{mode==='login'?'Ingresa para registrar ventas y consultar tus facturas.':'Con estos datos identificaremos a tu negocio en las facturas.'}</p>
+    <p className="muted">{mode==='login'?'Ingresa para consultar tus facturas y administrar la integración.':'Con estos datos identificaremos a tu negocio y crearemos su acceso al servicio.'}</p>
     <form onSubmit={submit} autoComplete={mode==='register'?'off':'on'}>
       {mode==='register' && <>
         <label>Persona responsable<input name="nombre" value={form.nombre} onChange={change} maxLength="120" required /></label>

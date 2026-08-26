@@ -4,12 +4,12 @@ const path = require('path');
 const React = require('react');
 const { renderToStaticMarkup } = require('react-dom/server');
 const { RendererError } = require('./errors');
-const { FacturaDocument: FacturaGenerica } = require('../src/factura-plantilla/generica/FacturaDocument.jsx');
+const { FacturaDocument: FacturaCompleta } = require('../src/factura-plantilla/factura.js');
 
 const plantillas = {
   generica: {
-    component: FacturaGenerica,
-    stylesheetPath: path.join(__dirname, '..', 'src', 'factura-plantilla', 'generica', 'factura.css'),
+    component: FacturaCompleta,
+    stylesheetPath: path.join(__dirname, '..', 'src', 'factura-plantilla', 'factura.css'),
   },
 };
 
@@ -29,13 +29,11 @@ function validarFactura(factura) {
 
 function resolverPlantilla(factura, solicitada = 'auto') {
   const valor = String(solicitada || 'auto').trim().toLowerCase();
-  if (!['auto', 'generica', 'educontrol'].includes(valor)) {
+  if (!['auto', 'generica'].includes(valor)) {
     throw new RendererError('Plantilla inválida. Usa auto o generica', 400, 'PLANTILLA_INVALIDA');
   }
 
-  // La plantilla pertenece al servicio de Factura Bonita, no al sistema cliente.
-  // "educontrol" se acepta solo por compatibilidad con integraciones anteriores,
-  // pero se procesa exactamente con la plantilla genérica configurable.
+  // Factura Bonita usa una sola plantilla completa y multi-cliente.
   return 'generica';
 }
 

@@ -42,11 +42,13 @@ function Person({title,p,side}) {
   );
 }
 function Header({f}) {
-  const e=f.emisor||{}, logo=e.logoUrl;
+  const e=f.emisor||{}, logo=e.logoUrl||e.logoUrlBlanco;
+  const logoPosicion=['left','center','right'].includes(String(e.logoPosicion||'').toLowerCase())?String(e.logoPosicion).toLowerCase():'left';
   return React.createElement(React.Fragment,null,
-    React.createElement('header',{className:'hero'},
-      React.createElement('div',{className:'brand'}, logo?React.createElement('div',{className:'logo'},React.createElement('img',{src:logo,alt:'Logo'})):React.createElement('div',{className:'logo fallback'},ini(e.nombre)),
-        React.createElement('div',null,React.createElement('span',{className:'overline'},'COMPROBANTE DE INGRESO'),React.createElement('h1',null,texto(e.nombre,'Emisor')),React.createElement('p',null,texto(e.correo,'')))) ,
+    React.createElement('header',{className:`hero hero-logo-${logoPosicion}`},
+      React.createElement('div',{className:`brand brand-logo-${logoPosicion}`},
+        React.createElement('div',{className:'brand-logo-wrap'},logo?React.createElement('div',{className:'logo'},React.createElement('img',{src:logo,alt:'Logo del emisor'})):React.createElement('div',{className:'logo fallback'},ini(e.nombre))),
+        React.createElement('div',{className:'brand-text'},React.createElement('span',{className:'overline'},'COMPROBANTE DE INGRESO'),React.createElement('h1',null,texto(e.nombre,'Emisor')),React.createElement('p',null,texto(e.correo,'')))) ,
       React.createElement('div',{className:'number'},React.createElement('span',null,'FACTURA'),React.createElement('strong',{className:'mono'},texto(f.id,'Sin número')),React.createElement('em',null,'PDF · SOLO LECTURA'))
     ),
     React.createElement('section',{className:'meta'},

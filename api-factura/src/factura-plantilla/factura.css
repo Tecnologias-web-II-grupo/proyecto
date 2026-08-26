@@ -30,7 +30,30 @@
   .total-row{padding:3.5px 7px}
   footer{padding:6px 17px}
 }
-\n\n/* Versión completa: conserva todos los campos recibidos sin sacrificar el cierre compacto. */\n.closing{grid-template-columns:minmax(0,1fr) 365px;gap:16px}\n.closing-meta{grid-template-columns:1fr 1fr;gap:5px 11px}\n.totals-grid{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #e8eff3}\n.totals-grid .total-row{border-top:0;border-bottom:1px solid #e8eff3;padding:4px 7px;font-size:7.25px;min-width:0}\n.totals-grid .total-row:nth-child(odd){border-right:1px solid #e8eff3}\n.totals-grid .total-row span{min-width:0;line-height:1.18}\n.totals-grid .total-row strong{font-size:7.15px}\n.grand{grid-column:1 / -1}\n.person-card .datum strong{overflow-wrap:anywhere;word-break:normal}\n.person-card .datum:nth-child(n+5) strong{font-size:9.1px}\n@media print{\n  .closing{grid-template-columns:minmax(0,1fr) 350px;gap:12px;margin-top:9px}\n  .closing-notes{padding:7px 9px 6px}\n  .totals h3{padding:6px 8px}\n  .totals-grid .total-row{padding:3px 6px;font-size:6.85px}\n  .totals-grid .total-row strong{font-size:6.8px}\n  .grand{padding:7px}\n  .grand strong{font-size:10.2px}\n}\n@media(max-width:760px){.totals-grid{grid-template-columns:1fr}.totals-grid .total-row:nth-child(odd){border-right:0}}\n
+
+
+/* Versión completa: conserva todos los campos recibidos sin sacrificar el cierre compacto. */
+.closing{grid-template-columns:minmax(0,1fr) 365px;gap:16px}
+.closing-meta{grid-template-columns:1fr 1fr;gap:5px 11px}
+.totals-grid{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #e8eff3}
+.totals-grid .total-row{border-top:0;border-bottom:1px solid #e8eff3;padding:4px 7px;font-size:7.25px;min-width:0}
+.totals-grid .total-row:nth-child(odd){border-right:1px solid #e8eff3}
+.totals-grid .total-row span{min-width:0;line-height:1.18}
+.totals-grid .total-row strong{font-size:7.15px}
+.grand{grid-column:1 / -1}
+.person-card .datum strong{overflow-wrap:anywhere;word-break:normal}
+.person-card .datum:nth-child(n+5) strong{font-size:9.1px}
+@media print{
+  .closing{grid-template-columns:minmax(0,1fr) 350px;gap:12px;margin-top:9px}
+  .closing-notes{padding:7px 9px 6px}
+  .totals h3{padding:6px 8px}
+  .totals-grid .total-row{padding:3px 6px;font-size:6.85px}
+  .totals-grid .total-row strong{font-size:6.8px}
+  .grand{padding:7px}
+  .grand strong{font-size:10.2px}
+}
+@media(max-width:760px){.totals-grid{grid-template-columns:1fr}.totals-grid .total-row:nth-child(odd){border-right:0}}
+
 /* Cierre final: información completa con jerarquía visual más limpia. */
 .closing{grid-template-columns:minmax(0,1fr) 360px;gap:18px;margin-top:14px;align-items:stretch}
 .closing-notes{padding:12px 14px 11px;border:1px solid var(--line);border-top:3px solid var(--teal);border-radius:9px;background:#fff}
@@ -59,4 +82,23 @@
  .note-group{padding:5px 6px}
  .totals-grid .total-row{padding:3px 6px;font-size:6.85px}
  .totals-grid .total-row strong{font-size:6.8px}
+}
+
+/* Posición configurable del logo sin alterar la identidad de la plantilla. */
+.brand{flex:1}
+.brand-logo-wrap{display:flex;align-items:center;justify-content:flex-start;flex:0 0 auto}
+.brand-text{min-width:0}
+.brand-logo-center{display:grid;grid-template-columns:1fr;justify-items:center;text-align:center}
+.brand-logo-center .brand-logo-wrap{justify-content:center}
+.brand-logo-center .brand-text{text-align:center}
+.brand-logo-right{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}
+.brand-logo-right .brand-text{grid-column:1;grid-row:1;text-align:left}
+.brand-logo-right .brand-logo-wrap{grid-column:2;grid-row:1;justify-content:flex-end}
+@media print{
+  .brand-logo-center{display:grid}
+  .brand-logo-right{display:grid}
+}
+@media(max-width:760px){
+  .brand-logo-right{grid-template-columns:1fr;justify-items:flex-start}
+  .brand-logo-right .brand-text,.brand-logo-right .brand-logo-wrap{grid-column:1;grid-row:auto;text-align:left}
 }

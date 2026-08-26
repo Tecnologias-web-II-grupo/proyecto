@@ -4,12 +4,14 @@ function texto(v, fallback = '—') {
   if (v === undefined || v === null || String(v).trim() === '') return fallback;
   return String(v);
 }
+
 function fecha(v) {
   if (!v) return '—';
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return texto(v);
   return new Intl.DateTimeFormat('es-CR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(d);
 }
+
 function dinero(v, moneda = 'CRC') {
   const n = Number(v || 0);
   const c = String(moneda || 'CRC').toUpperCase();
@@ -19,6 +21,7 @@ function dinero(v, moneda = 'CRC') {
     return `${c} ${n.toFixed(2)}`;
   }
 }
+
 function ini(nombre) {
   return texto(nombre, 'F').split(/\s+/).filter(Boolean).slice(0, 2).map((x) => x[0]).join('').toUpperCase();
 }
@@ -40,10 +43,12 @@ const MP = {
   '01': 'Efectivo', '02': 'Tarjeta', '03': 'Cheque', '04': 'Transferencia/depósito',
   '05': 'Recaudado por terceros', '06': 'SINPE Móvil', '07': 'Plataforma digital', '99': 'Otros'
 };
+
 function cod(map, v) {
   const k = texto(v, '');
   return map[k] ? `${map[k]} · ${k}` : texto(v);
 }
+
 function proveedorTexto(v) {
   if (!v) return '—';
   if (typeof v === 'string') return texto(v);
@@ -51,10 +56,12 @@ function proveedorTexto(v) {
   const id = v.identificacion?.numero || v.identificacion || v.numeroIdentificacion || '';
   return [nombre, id && `ID ${id}`].filter(Boolean).join(' · ') || '—';
 }
+
 function primerImpuesto(item) {
   if (Array.isArray(item?.impuestos) && item.impuestos.length) return item.impuestos[0] || {};
   return item?.impuesto || {};
 }
+
 function listaCorreos(p) {
   const extras = [
     ...(Array.isArray(p?.correosAdicionales) ? p.correosAdicionales : []),
@@ -62,6 +69,12 @@ function listaCorreos(p) {
   ].filter(Boolean);
   return Array.from(new Set(extras)).join(', ') || '—';
 }
+
+function telefonoTexto(p) {
+  const t = p?.telefono || {};
+  return t.numero ? `${t.codigoPais ? `+${t.codigoPais} ` : ''}${t.numero}` : '—';
+}
+
 function ubicacionTexto(p) {
   const u = p?.ubicacion || {};
   return [
@@ -78,28 +91,39 @@ function D({ l, v, mono = false, wide = false }) {
     React.createElement('strong', { className: mono ? 'mono' : '' }, texto(v))
   );
 }
-function SectionTitle({ kicker, title }) {
-  return React.createElement('div', { className: 'section-title' },
+
+function SectionTitle({ kicker, title, compact = false }) {
+  return React.createElement('div', { className: `section-title${compact ? ' compact' : ''}` },
     React.createElement('span', null, kicker),
     React.createElement('h2', null, title)
   );
 }
 
 function Person({ title, p = {}, side }) {
-  const t = p.telefono || {};
-  const u = p.ubicacion || {};
   return React.createElement('section', { className: `person-card ${side}` },
     React.createElement(SectionTitle, { kicker: side === 'issuer' ? 'QUIEN EMITE' : 'QUIEN RECIBE', title }),
-    React.createElement('div', { className: 'grid two' },
+    React.createElement('div', { className: 'grid two person-core-grid' },
       React.createElement(D, { l: 'Nombre o razón social', v: p.nombre }),
-      React.createElement(D, { l: 'Nombre comercial', v: p.nombreComercial }),
+      React.createElement(D, { l: 'Identificación', v: p.identificacion?.numero, mono: true }),
       React.createElement(D, { l: 'Tipo de identificación', v: cod(ID, p.identificacion?.tipo) }),
-      React.createElement(D, { l: 'Número de identificación', v: p.identificacion?.numero, mono: true }),
-      React.createElement(D, { l: 'Correo electrónico', v: p.correo }),
-      React.createElement(D, { l: 'Correos adicionales', v: listaCorreos(p) }),
+      React.createElement(D, { l: 'Correo electrónico', v: p.correo })
+    )
+  );
+}
+
+function PartyExtraCard({ title, p = {}, side }) {
+  const u = p.ubicacion || {};
+  return React.createElement('section', { className: `party-extra-card ${side}` },
+    React.createElement('div', { className: 'party-extra-head' },
+      React.createElement('span', null, side === 'issuer' ? 'EMISOR · DATOS COMPLEMENTARIOS' : 'CLIENTE · DATOS COMPLEMENTARIOS'),
+      React.createElement('h3', null, title)
+    ),
+    React.createElement('div', { className: 'grid two party-extra-grid' },
+      React.createElement(D, { l: 'Nombre comercial', v: p.nombreComercial }),
+      React.createElement(D, { l: 'Teléfono', v: telefonoTexto(p) }),
       React.createElement(D, { l: 'Actividad económica', v: p.actividadEconomica }),
+      React.createElement(D, { l: 'Correos adicionales', v: listaCorreos(p) }),
       React.createElement(D, { l: 'Registro fiscal / bebidas', v: p.registroBebidasAlcoholicas }),
-      React.createElement(D, { l: 'Teléfono', v: t.numero ? `${t.codigoPais ? `+${t.codigoPais} ` : ''}${t.numero}` : '—' }),
       React.createElement(D, { l: 'Ubicación administrativa', v: ubicacionTexto(p), wide: true }),
       React.createElement(D, { l: 'Provincia', v: u.provincia }),
       React.createElement(D, { l: 'Cantón', v: u.canton }),
@@ -217,6 +241,16 @@ function Items({ f }) {
   );
 }
 
+function PartyExtended({ f }) {
+  return React.createElement('section', { className: 'block party-extended' },
+    React.createElement(SectionTitle, { kicker: 'INFORMACIÓN AMPLIADA DE LAS PARTES', title: 'Datos complementarios del emisor y del cliente' }),
+    React.createElement('div', { className: 'party-extended-grid' },
+      React.createElement(PartyExtraCard, { title: texto(f.emisor?.nombre, 'Datos del emisor'), p: f.emisor || {}, side: 'issuer' }),
+      React.createElement(PartyExtraCard, { title: texto(f.receptor?.nombre, 'Datos del cliente'), p: f.receptor || {}, side: 'client' })
+    )
+  );
+}
+
 function obtenerOtros(f) {
   const raw = f?.otros;
   if (!raw) return [];
@@ -260,21 +294,37 @@ function Summary({ f }) {
   const condicion = f.detalleCondicionVenta || f.detalleCondicionVentaOtro;
 
   return React.createElement(React.Fragment, null,
-    React.createElement('section', { className: 'block info-documento' },
-      React.createElement(SectionTitle, { kicker: 'INFORMACIÓN DEL DOCUMENTO', title: 'Datos y trazabilidad del comprobante' }),
-      React.createElement('div', { className: 'grid four info-grid' },
-        React.createElement(D, { l: 'Perfil de validación', v: f.perfilValidacion || 'Visual completa' }),
-        React.createElement(D, { l: 'Número de factura', v: f.id, mono: true }),
-        React.createElement(D, { l: 'Sistema de origen', v: f.origen }),
-        React.createElement(D, { l: 'Referencia externa', v: f.referenciaExterna }),
-        React.createElement(D, { l: 'Condición / detalle', v: condicion }),
-        React.createElement(D, { l: 'Proveedor de sistemas', v: proveedorTexto(f.proveedorSistemas) }),
-        React.createElement(D, { l: 'Clave electrónica', v: f.claveElectronica, mono: true }),
-        React.createElement(D, { l: 'Consecutivo electrónico', v: f.consecutivoElectronico, mono: true }),
-        React.createElement(D, { l: 'Formato', v: 'PDF de solo lectura' }),
-        React.createElement(D, { l: 'Estado del documento', v: f.estadoDocumento || f.estado }),
-        React.createElement(D, { l: 'Estado XML', v: f.estadoXml }),
-        React.createElement(D, { l: 'Estado Hacienda', v: f.estadoHacienda })
+    React.createElement('section', { className: 'block summary-shell' },
+      React.createElement('div', { className: 'summary-left' },
+        React.createElement(SectionTitle, { kicker: 'INFORMACIÓN DEL COMPROBANTE', title: 'Datos y trazabilidad del comprobante', compact: true }),
+        React.createElement('div', { className: 'grid two info-grid info-grid-slim' },
+          React.createElement(D, { l: 'Perfil de validación', v: f.perfilValidacion || 'Visual completa' }),
+          React.createElement(D, { l: 'Número de factura', v: f.id, mono: true }),
+          React.createElement(D, { l: 'Sistema de origen', v: f.origen }),
+          React.createElement(D, { l: 'Referencia externa', v: f.referenciaExterna }),
+          React.createElement(D, { l: 'Condición / detalle', v: condicion }),
+          React.createElement(D, { l: 'Proveedor de sistemas', v: proveedorTexto(f.proveedorSistemas) }),
+          React.createElement(D, { l: 'Clave electrónica', v: f.claveElectronica, mono: true }),
+          React.createElement(D, { l: 'Consecutivo electrónico', v: f.consecutivoElectronico, mono: true }),
+          React.createElement(D, { l: 'Formato', v: 'PDF de solo lectura' }),
+          React.createElement(D, { l: 'Estado del documento', v: f.estadoDocumento || f.estado }),
+          React.createElement(D, { l: 'Estado XML', v: f.estadoXml }),
+          React.createElement(D, { l: 'Estado Hacienda', v: f.estadoHacienda })
+        )
+      ),
+      React.createElement('div', { className: 'summary-right' },
+        React.createElement(SectionTitle, { kicker: 'RESUMEN DE IMPORTES', title: 'Totales del comprobante', compact: true }),
+        React.createElement('div', { className: 'totals totals-large' },
+          React.createElement('div', { className: 'totals-grid' },
+            ...rows.map(([l, v]) => React.createElement('div', { className: 'total-row', key: l },
+              React.createElement('span', null, l), React.createElement('strong', null, dinero(v, f.moneda))
+            ))
+          ),
+          React.createElement('div', { className: 'grand' },
+            React.createElement('span', null, 'TOTAL COMPROBANTE'),
+            React.createElement('strong', null, dinero(t.totalComprobante, f.moneda))
+          )
+        )
       )
     ),
     React.createElement('section', { className: 'block complementary' },
@@ -305,20 +355,6 @@ function Summary({ f }) {
             : React.createElement('p', null, '—')
         )
       )
-    ),
-    React.createElement('section', { className: 'block totals-section' },
-      React.createElement(SectionTitle, { kicker: 'RESUMEN DE IMPORTES', title: 'Totales del comprobante' }),
-      React.createElement('div', { className: 'totals totals-large' },
-        React.createElement('div', { className: 'totals-grid' },
-          ...rows.map(([l, v]) => React.createElement('div', { className: 'total-row', key: l },
-            React.createElement('span', null, l), React.createElement('strong', null, dinero(v, f.moneda))
-          ))
-        ),
-        React.createElement('div', { className: 'grand' },
-          React.createElement('span', null, 'TOTAL COMPROBANTE'),
-          React.createElement('strong', null, dinero(t.totalComprobante, f.moneda))
-        )
-      )
     )
   );
 }
@@ -332,6 +368,7 @@ function FacturaDocument({ factura: f }) {
         React.createElement(Person, { title: 'Datos del cliente', p: f.receptor || {}, side: 'client' })
       ),
       React.createElement(Items, { f }),
+      React.createElement(PartyExtended, { f }),
       React.createElement(Summary, { f })
     ),
     React.createElement('footer', null,

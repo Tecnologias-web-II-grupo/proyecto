@@ -8,7 +8,7 @@ export async function api(path, options={}) {
   const token = getToken();
   if (token) headers.set('Authorization', `Bearer ${token}`);
   if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) headers.set('Content-Type','application/json');
-  const response = await fetch(path, { ...options, headers });
+  const response = await fetch(path, { cache: 'no-store', ...options, headers });
   const text = await response.text();
   let data = text;
   try { data = text ? JSON.parse(text) : null; } catch {}

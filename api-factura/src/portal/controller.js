@@ -102,6 +102,8 @@ async function login(req, res) {
 
 async function me(req, res) {
   await ensurePortalSchema();
+  res.set('Cache-Control', 'no-store, private, max-age=0');
+  res.set('Pragma', 'no-cache');
   const [rows] = await pool.execute(
     `SELECT u.id, u.nombre, u.email, u.empresa, u.tipo_identificacion, u.numero_identificacion, u.correo_facturacion,
             p.nombre_comercial, p.actividad_economica, p.telefono, p.provincia, p.canton, p.distrito, p.otras_senas,
@@ -180,11 +182,22 @@ async function saveProfile(req, res) {
     [effectiveLogo, effectiveWhiteLogo, position, req.portalUser.usuario_id]
   );
 
+  // Verifica contra la BD antes de responder. Esto evita que el portal
+  // muestre una vista previa transitoria que no corresponda al perfil persistido.
+  const [saved] = await pool.execute(
+    'SELECT logo, logo_blanco, logo_posicion FROM portal_perfiles WHERE usuario_id = ? LIMIT 1',
+    [req.portalUser.usuario_id]
+  );
+  if (!saved.length || saved[0].logo !== effectiveLogo || saved[0].logo_blanco !== effectiveWhiteLogo) {
+    return res.status(500).json({ error: 'No se pudo confirmar el logo guardado. Intenta nuevamente.' });
+  }
+
   return me(req, res);
 }
 
 async function listMyInvoices(req, res) {
   await ensurePortalSchema();
+  res.set('Cache-Control', 'no-store, private, max-age=0');
   const limit = Math.min(Math.max(Number.parseInt(req.query.limit, 10) || 100, 1), 200);
   const [rows] = await pool.query(
     `SELECT id, fecha_emision, moneda, receptor_nombre, total_comprobante, total_descuentos,

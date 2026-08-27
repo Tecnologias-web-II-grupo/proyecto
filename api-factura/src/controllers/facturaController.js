@@ -149,17 +149,21 @@ async function buscarPorReferencia(origen, referencia, connection = pool) {
 function configuracionFacturaSmartRequest(req) {
   const token = String(req.headers['x-facturasmart-access-token'] || '').trim();
   const baseUrl = String(req.headers['x-facturasmart-base-url'] || 'https://proyecto-facturaci-n-electr-nica.onrender.com').trim();
-  return { token, baseUrl };
+  const correo = String(req.headers['x-facturasmart-email'] || '').trim().toLowerCase();
+  const password = String(req.headers['x-facturasmart-password'] || '').trim();
+  return { token, baseUrl, correo, password };
 }
 
 async function adjuntarFacturaElectronica(req, factura) {
-  const { token, baseUrl } = configuracionFacturaSmartRequest(req);
-  if (!token || !factura?.id) return factura;
+  const { token, baseUrl, correo, password } = configuracionFacturaSmartRequest(req);
+  if ((!token && !(correo && password)) || !factura?.id) return factura;
   const facturaElectronica = await sincronizarFacturaElectronica({
     facturaVisualId: factura.id,
     factura,
     baseUrl,
     accessToken: token,
+    correo,
+    password,
   });
   return { ...factura, facturaElectronica };
 }

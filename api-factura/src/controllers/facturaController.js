@@ -2,6 +2,11 @@ const pool = require('../db/database');
 const { encrypt, decrypt } = require('../middleware/crypto');
 const { randomUUID } = require('crypto');
 const { accountByApiKey } = require('../portal/apiKey');
+const {
+  sincronizarFacturaElectronica,
+  obtenerEstadoFacturaElectronica,
+  obtenerXmlFacturaElectronica,
+} = require('../services/facturaSmartIntegration');
 
 async function columnaExiste(nombre) {
   const [[row]] = await pool.query(
@@ -141,6 +146,24 @@ async function buscarPorReferencia(origen, referencia, connection = pool) {
   return rows[0]?.id || null;
 }
 
+function configuracionFacturaSmartRequest(req) {
+  const token = String(req.headers['x-facturasmart-access-token'] || '').trim();
+  const baseUrl = String(req.headers['x-facturasmart-base-url'] || 'https://proyecto-facturaci-n-electr-nica.onrender.com').trim();
+  return { token, baseUrl };
+}
+
+async function adjuntarFacturaElectronica(req, factura) {
+  const { token, baseUrl } = configuracionFacturaSmartRequest(req);
+  if (!token || !factura?.id) return factura;
+  const facturaElectronica = await sincronizarFacturaElectronica({
+    facturaVisualId: factura.id,
+    factura,
+    baseUrl,
+    accessToken: token,
+  });
+  return { ...factura, facturaElectronica };
+}
+
 async function crearFactura(req, res) {
   const body = req.body || {};
   const apiKey = String(req.headers['x-api-key'] || '').trim();
@@ -198,8 +221,9 @@ async function crearFactura(req, res) {
           );
         }
         const existente = await obtenerFacturaPorId(existenteId);
+        const respuesta = await adjuntarFacturaElectronica(req, existente);
         res.set('X-Idempotent-Replay', 'true');
-        return res.status(200).json(existente);
+        return res.status(200).json(respuesta);
       }
     }
 
@@ -264,7 +288,9 @@ async function crearFactura(req, res) {
     }
 
     await conn.commit();
-    return res.status(201).json(await obtenerFacturaPorId(id));
+    const creada = await obtenerFacturaPorId(id);
+    const respuesta = await adjuntarFacturaElectronica(req, creada);
+    return res.status(201).json(respuesta);
   } catch (err) {
     try { await conn.rollback(); } catch {}
 
@@ -277,8 +303,10 @@ async function crearFactura(req, res) {
             [portalAccount.id, existenteId]
           );
         }
+        const existente = await obtenerFacturaPorId(existenteId);
+        const respuesta = await adjuntarFacturaElectronica(req, existente);
         res.set('X-Idempotent-Replay', 'true');
-        return res.status(200).json(await obtenerFacturaPorId(existenteId));
+        return res.status(200).json(respuesta);
       }
     }
 
@@ -391,7 +419,8 @@ async function consultarFactura(req, res) {
   try {
     const factura = await obtenerFacturaPorId(req.params.id);
     if (!factura) return res.status(404).json({ error: 'Factura no encontrada' });
-    return res.json(factura);
+    const facturaElectronica = await obtenerEstadoFacturaElectronica(req.params.id).catch(() => null);
+    return res.json(facturaElectronica ? { ...factura, facturaElectronica } : factura);
   } catch (err) {
     console.error('[consultarFactura] error:', err.message);
     return res.status(500).json({ error: 'Error al consultar la factura' });
@@ -465,11 +494,42 @@ async function obtenerFacturaPorId(id) {
   };
 }
 
+async function consultarFacturaElectronica(req, res) {
+  try {
+    const factura = await obtenerFacturaPorId(req.params.id);
+    if (!factura) return res.status(404).json({ error: 'Factura no encontrada' });
+    const estado = await obtenerEstadoFacturaElectronica(req.params.id);
+    if (!estado) return res.status(404).json({ error: 'La factura electrónica todavía no está disponible.' });
+    return res.json(estado);
+  } catch (err) {
+    console.error('[consultarFacturaElectronica] error:', err.message);
+    return res.status(500).json({ error: 'No se pudo consultar la factura electrónica', detalle: err.message });
+  }
+}
+
+async function descargarXmlFacturaElectronica(req, res) {
+  try {
+    const factura = await obtenerFacturaPorId(req.params.id);
+    if (!factura) return res.status(404).json({ error: 'Factura no encontrada' });
+    const xml = await obtenerXmlFacturaElectronica(req.params.id);
+    if (!xml) return res.status(404).json({ error: 'El XML electrónico todavía no está disponible.' });
+    res.set('Cache-Control', 'private, no-store');
+    res.set('Content-Type', xml.mimeType || 'application/xml');
+    res.set('Content-Disposition', `inline; filename="factura-electronica-${xml.facturaSmartId || req.params.id}.xml"`);
+    return res.send(xml.buffer);
+  } catch (err) {
+    console.error('[descargarXmlFacturaElectronica] error:', err.message);
+    return res.status(500).json({ error: 'No se pudo recuperar el XML electrónico', detalle: err.message });
+  }
+}
+
 module.exports = {
   crearFactura,
   consultarFactura,
   listarFacturas,
   actualizarLogoFactura,
+  consultarFacturaElectronica,
+  descargarXmlFacturaElectronica,
   obtenerFacturaPorId,
   asegurarEsquemaCompartido,
 };

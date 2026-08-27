@@ -1,7 +1,7 @@
 {
   "name": "api-factura",
-  "version": "5.0.0",
-  "description": "Factura Bonita: servicio especializado de factura visual PDF, portal de registro, logo e historial de facturas.",
+  "version": "5.1.0",
+  "description": "Factura Bonita: comprobante visual PDF con puente opcional a FacturaSmart para factura electrónica XML.",
   "main": "src/server.js",
   "scripts": {
     "test": "node --test --experimental-test-isolation=none",

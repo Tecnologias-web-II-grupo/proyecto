@@ -5,6 +5,8 @@ const {
   consultarFactura,
   listarFacturas,
   actualizarLogoFactura,
+  consultarFacturaElectronica,
+  descargarXmlFacturaElectronica,
 } = require('../controllers/facturaController');
 const { normalizarFacturaEntrada, validateFacturaMiddleware } = require('../middleware/validaFactura');
 const {
@@ -26,6 +28,8 @@ router.post('/', uploadLogo, manejarErrorMulter, prepararFacturaMultipart, norma
 // 1) Body JSON { "logoUrl": "data:image/...;base64,..." }
 // 2) Body form-data: "logo" y/o "logoBlanco" de tipo File.
 router.patch('/:id/logo', uploadLogo, manejarErrorMulter, prepararLogoArchivo, actualizarLogoFactura);
+router.get('/:id/electronica', consultarFacturaElectronica);
+router.get('/:id/electronica/xml', descargarXmlFacturaElectronica);
 router.get('/:id', consultarFactura);
 
 module.exports = router;

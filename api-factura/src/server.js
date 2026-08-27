@@ -9,12 +9,13 @@ const facturaRoutes = require('./routes/facturaRoutes');
 const portalRoutes = require('./routes/portalRoutes');
 const { ensurePortalSchema } = require('./portal/schema');
 const { asegurarEsquemaCompartido } = require('./controllers/facturaController');
+const { ensureFacturaSmartSchema } = require('./services/facturaSmartIntegration');
 const { createDocumentRoutes } = require('../document-renderer/routes');
 const { calentarNavegador, obtenerEstadoBrowser, cerrarBrowser } = require('../document-renderer/browserManager');
 const { obtenerEstadoRenderer } = require('../document-renderer/pdfRenderer');
 
 const app = express();
-const API_VERSION = '5.0.0';
+const API_VERSION = '5.1.0';
 const TEMPLATE_VERSION = 'factura-visual-generica-v1';
 
 const allowedOrigins = new Set(
@@ -41,7 +42,7 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', String(process.env.CORS_ALLOW_ALL || 'true').toLowerCase() !== 'false' ? '*' : origin);
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept, Authorization, X-Api-Key, X-Request-Id');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept, Authorization, X-Api-Key, X-Request-Id, X-FacturaSmart-Access-Token, X-FacturaSmart-Base-Url');
     res.setHeader('Access-Control-Expose-Headers', 'Retry-After, X-Idempotent-Replay');
     res.setHeader('Access-Control-Max-Age', '86400');
   }
@@ -74,6 +75,8 @@ const contrato = {
     consultarJson: 'GET /api/facturas/:id',
     documentoPdf: 'GET /api/documentos/facturas/:id?formato=pdf|html&plantilla=auto|generica',
     actualizarLogo: 'PATCH /api/facturas/:id/logo (logo principal y/o logo blanco; JSON data URL o multipart/form-data)',
+    facturaElectronicaEstado: 'GET /api/facturas/:id/electronica',
+    facturaElectronicaXml: 'GET /api/facturas/:id/electronica/xml',
     health: 'GET /health',
     healthDocumentos: 'GET /health/documentos',
     contrato: 'GET /api/contrato',
@@ -90,6 +93,7 @@ const contrato = {
     plantillaPdf: 'La factura visual usa una única plantilla configurable del servicio. El sistema cliente aporta los datos del emisor, receptor, conceptos, totales y su logo mediante la cuenta vinculada.',
     perfilV44Visual: 'En POST /api/facturas use perfilValidacion=v44-visual para validar el comprobante visual con campos ampliados cuando se proporcionen.',
     autenticacionCliente: 'Si se envía X-Api-Key, la factura queda asociada a la cuenta registrada y usa el logo guardado en ese portal. La referencia externa mantiene idempotencia.',
+    facturaSmart: 'Opcional: un sistema cliente puede enviar X-FacturaSmart-Access-Token y X-FacturaSmart-Base-Url. Factura Bonita registra la misma factura en FacturaSmart, recupera el XML y lo conserva asociado al comprobante visual.',
   },
 };
 
@@ -147,7 +151,7 @@ const PORT = process.env.PORT || 3000;
 if (require.main === module) {
   const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`API compartida de facturación corriendo en el puerto ${PORT}`);
-    Promise.allSettled([asegurarEsquemaCompartido(), ensurePortalSchema(), calentarNavegador()]);
+    Promise.allSettled([asegurarEsquemaCompartido(), ensurePortalSchema(), ensureFacturaSmartSchema(), calentarNavegador()]);
   });
 
   const cerrar = async () => {

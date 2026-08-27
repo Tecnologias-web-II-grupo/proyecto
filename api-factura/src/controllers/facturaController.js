@@ -324,6 +324,57 @@ async function crearFactura(req, res) {
   }
 }
 
+
+async function sincronizarFacturaSmartPorId(req, res) {
+  try {
+    const factura = await obtenerFacturaPorId(req.params.id);
+    if (!factura) return res.status(404).json({ error: 'Factura no encontrada' });
+
+    const apiKey = String(req.headers['x-api-key'] || '').trim();
+    if (apiKey) {
+      const portalAccount = await accountByApiKey(apiKey);
+      if (!portalAccount) return res.status(401).json({ error: 'Clave de integración de Factura Bonita inválida.' });
+    }
+
+    const body = req.body || {};
+    const resultado = await sincronizarFacturaElectronica({
+      facturaVisualId: factura.id,
+      factura,
+      baseUrl: body.baseUrl || body.url || 'https://proyecto-facturaci-n-electr-nica.onrender.com',
+      accessToken: body.accessToken || body.token || '',
+      correo: body.correo || body.email || '',
+      password: body.password || body.contrasena || '',
+    });
+
+    if (!resultado?.ok) {
+      return res.status(502).json({
+        ok: false,
+        estado: resultado?.estado || 'error',
+        mensaje: resultado?.mensaje || 'FacturaSmart no pudo procesar la factura.',
+        facturaId: factura.id,
+        facturaSmartId: resultado?.id || null,
+      });
+    }
+
+    return res.json({
+      ok: true,
+      estado: resultado.estado,
+      facturaId: factura.id,
+      facturaSmartId: resultado.id,
+      xmlBase64: resultado.xmlBase64,
+      mimeType: resultado.mimeType || 'application/xml',
+      servicio: resultado.servicio,
+    });
+  } catch (err) {
+    console.error('[sincronizarFacturaSmartPorId] error:', err?.message || err);
+    return res.status(500).json({
+      ok: false,
+      error: 'No se pudo sincronizar la factura con FacturaSmart',
+      detalle: err?.message || 'Error desconocido',
+    });
+  }
+}
+
 async function actualizarLogoFactura(req, res) {
   const id = normalizarTexto(req.params.id, 20);
   if (!id) return res.status(400).json({ error: 'Factura inválida' });
@@ -534,6 +585,7 @@ module.exports = {
   actualizarLogoFactura,
   consultarFacturaElectronica,
   descargarXmlFacturaElectronica,
+  sincronizarFacturaSmartPorId,
   obtenerFacturaPorId,
   asegurarEsquemaCompartido,
 };

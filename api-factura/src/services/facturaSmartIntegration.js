@@ -153,7 +153,7 @@ async function requestJson(baseUrl, path, token, { method = 'GET', body = null, 
       headers: {
         Accept: 'application/json',
         ...(body ? { 'Content-Type': 'application/json' } : {}),
-        Authorization: `Bearer ${token}`,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
       signal: controller.signal,
@@ -166,6 +166,21 @@ async function requestJson(baseUrl, path, token, { method = 'GET', body = null, 
     clearTimeout(timer);
   }
 }
+
+async function loginFacturaSmart(baseUrl, correo, password) {
+  const email = clean(correo || process.env.FACTURASMART_EMAIL, 180).toLowerCase();
+  const secret = String(password || process.env.FACTURASMART_PASSWORD || '').trim();
+  if (!email || !secret) throw new Error('FacturaSmart requiere correo y contraseña para obtener el Bearer Token.');
+  const login = await requestJson(baseUrl, '/api/v1/auth/login', '', {
+    method: 'POST', body: { correo: email, password: secret }, timeout: 45000,
+  });
+  if (!login.ok) throw new Error(messageFrom(login.data, `FacturaSmart rechazó el login (HTTP ${login.status}).`));
+  const token = clean(login.data?.accessToken || login.data?.token, 5000);
+  if (!token) throw new Error('FacturaSmart aceptó el login, pero no devolvió accessToken.');
+  return token;
+}
+
+function wait(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
 async function requestBinary(baseUrl, path, token, timeout = 45000) {
   const controller = new AbortController();
@@ -193,12 +208,16 @@ function messageFrom(data, fallback) {
   return clean(data.message || data.mensaje || data.error || data.detalle || fallback, 500);
 }
 
-async function sincronizarFacturaElectronica({ facturaVisualId, factura, baseUrl, accessToken }) {
+async function sincronizarFacturaElectronica({ facturaVisualId, factura, baseUrl, accessToken, correo, password }) {
   const facturaId = clean(facturaVisualId || factura?.id, 20);
-  const token = clean(accessToken, 5000);
-  if (!facturaId || !token) return { ok: false, omitido: true, estado: 'sin_credenciales' };
+  if (!facturaId) return { ok: false, omitido: true, estado: 'factura_invalida' };
 
   const root = normalizeBaseUrl(baseUrl || DEFAULT_FACTURASMART_URL);
+  let token = clean(accessToken, 5000);
+  const email = clean(correo || process.env.FACTURASMART_EMAIL, 180).toLowerCase();
+  const secret = String(password || process.env.FACTURASMART_PASSWORD || '').trim();
+  if (!token && email && secret) token = await loginFacturaSmart(root, email, secret);
+  if (!token) return { ok: false, omitido: true, estado: 'sin_credenciales', mensaje: 'No se recibió token ni credenciales de FacturaSmart.' };
   const payload = facturaSmartPayload(factura);
   const smartIdEsperado = payload.id;
 
@@ -206,10 +225,15 @@ async function sincronizarFacturaElectronica({ facturaVisualId, factura, baseUrl
     await saveState(facturaId, { facturasmartId: smartIdEsperado, estado: 'procesando', error: null });
 
     let processed = await requestJson(root, '/api/v1/facturas/procesar', token, {
-      method: 'POST',
-      body: payload,
-      timeout: 60000,
+      method: 'POST', body: payload, timeout: 60000,
     });
+
+    if (!processed.ok && processed.status === 401 && email && secret) {
+      token = await loginFacturaSmart(root, email, secret);
+      processed = await requestJson(root, '/api/v1/facturas/procesar', token, {
+        method: 'POST', body: payload, timeout: 60000,
+      });
+    }
 
     // FacturaSmart puede responder conflicto si la misma factura ya fue creada.
     // La integración es idempotente: si el GET por el mismo ID existe, continuamos.
@@ -225,7 +249,18 @@ async function sincronizarFacturaElectronica({ facturaVisualId, factura, baseUrl
     }
 
     const smartId = clean(processed.data?.id || processed.data?.facturaId || processed.data?.factura?.id || smartIdEsperado, 100);
-    const xml = await requestBinary(root, `/api/v1/facturas/${encodeURIComponent(smartId)}/xml`, token, 45000);
+    let xml = null;
+    let xmlError = null;
+    for (const delay of [0, 700, 1500, 3000]) {
+      if (delay) await wait(delay);
+      try {
+        xml = await requestBinary(root, `/api/v1/facturas/${encodeURIComponent(smartId)}/xml`, token, 45000);
+        if (xml?.buffer?.length) break;
+      } catch (error) {
+        xmlError = error;
+      }
+    }
+    if (!xml?.buffer?.length) throw xmlError || new Error('FacturaSmart registró la factura, pero el XML todavía no está disponible.');
     const xmlBase64 = xml.buffer.toString('base64');
 
     await saveState(facturaId, {

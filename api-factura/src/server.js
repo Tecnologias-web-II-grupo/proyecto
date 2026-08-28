@@ -1,5 +1,7 @@
 require('./react/registerJsx');
 const express = require('express');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
 const { renderApiConsole } = require('./ui/api/ApiConsole.jsx');
@@ -30,16 +32,40 @@ const allowedOrigins = new Set(
 // y declarar FRONTEND_URL con una lista separada por comas.
 function isAllowedOrigin(origin) {
   if (!origin) return true;
-  if (String(process.env.CORS_ALLOW_ALL || 'true').toLowerCase() !== 'false') return true;
+  if (String(process.env.CORS_ALLOW_ALL || 'false').toLowerCase() === 'true') return true;
   if (allowedOrigins.size === 0) return false;
   return allowedOrigins.has(origin);
 }
 
 app.disable('x-powered-by');
+app.use(
+  helmet({
+    crossOriginResourcePolicy: false,
+  })
+);
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Demasiadas solicitudes. Intente nuevamente más tarde.',
+  },
+});
+app.use(generalLimiter);
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Demasiados intentos de inicio de sesión. Intente nuevamente en 15 minutos.',
+  },
+});
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (origin && isAllowedOrigin(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', String(process.env.CORS_ALLOW_ALL || 'true').toLowerCase() !== 'false' ? '*' : origin);
+   res.setHeader('Access-Control-Allow-Origin',String(process.env.CORS_ALLOW_ALL || 'false').toLowerCase() === 'true' ? '*' : origin);
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept, Authorization, X-Api-Key, X-Request-Id, X-FacturaSmart-Access-Token, X-FacturaSmart-Base-Url');
@@ -122,6 +148,7 @@ app.get('/health/documentos', (req, res) => {
 });
 
 app.use('/api/facturas', facturaRoutes);
+app.use('/api/portal/auth/login', loginLimiter);
 app.use('/api/portal', portalRoutes);
 app.use('/api/documentos', createDocumentRoutes());
 
@@ -137,13 +164,25 @@ app.get(/^\/(?!api\/|health(?:\/|$)|docs$).*/, (req, res, next) => {
 });
 
 app.use((err, req, res, next) => {
-  console.error('[error]', err.message);
-  const status = Number(err.status) || 400;
-  if (status === 503) res.set('Retry-After', '2');
-  res.status(status).json({
-    error: status >= 500 ? 'Error interno del servicio' : 'Solicitud inválida',
-    detalle: err.message,
-  });
+  console.error('[error]', err);
+
+  const status = Number(err.status) || 500;
+
+  if (status === 503) {
+    res.set('Retry-After', '2');
+  }
+
+  const respuesta = {
+    error: status >= 500
+      ? 'Error interno del servicio'
+      : 'Solicitud inválida',
+  };
+
+  if (status < 500) {
+    respuesta.detalle = err.message;
+  }
+
+  res.status(status).json(respuesta);
 });
 
 const PORT = process.env.PORT || 3000;

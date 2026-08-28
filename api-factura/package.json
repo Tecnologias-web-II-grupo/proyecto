@@ -7,10 +7,10 @@
     "test": "node --test --experimental-test-isolation=none",
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "postinstall": "node scripts/installChrome.js && npm --prefix frontend install && npm --prefix frontend run build",
+    "postinstall": "node scripts/installChrome.js && cd frontend && npm install --ignore-scripts && npm run build",
     "install:chrome": "node scripts/installChrome.js",
-    "build:frontend": "npm --prefix frontend install && npm --prefix frontend run build",
-    "dev:frontend": "npm --prefix frontend run dev"
+    "build:frontend": "cd frontend && npm install --ignore-scripts && npm run build",
+    "dev:frontend": "cd frontend && npm run dev"
   },
   "keywords": [],
   "author": "",

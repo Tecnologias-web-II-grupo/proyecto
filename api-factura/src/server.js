@@ -41,7 +41,7 @@ app.use((req, res, next) => {
   if (origin && isAllowedOrigin(origin)) {
     res.setHeader('Access-Control-Allow-Origin', String(process.env.CORS_ALLOW_ALL || 'true').toLowerCase() !== 'false' ? '*' : origin);
     res.setHeader('Vary', 'Origin');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept, Authorization, X-Api-Key, X-Request-Id, X-FacturaSmart-Access-Token, X-FacturaSmart-Base-Url');
     res.setHeader('Access-Control-Expose-Headers', 'Retry-After, X-Idempotent-Replay');
     res.setHeader('Access-Control-Max-Age', '86400');
@@ -84,6 +84,8 @@ const contrato = {
     portalLogin: 'POST /api/portal/auth/login',
     portalFacturas: 'GET /api/portal/facturas',
     portalPerfil: 'PUT /api/portal/perfil',
+    portalCambiarContrasena: 'PUT /api/portal/cuenta/contrasena',
+    portalEliminarCuenta: 'DELETE /api/portal/cuenta',
     portalRotarApiKey: 'POST /api/portal/integracion/api-key/rotar',
   },
   interoperabilidad: {

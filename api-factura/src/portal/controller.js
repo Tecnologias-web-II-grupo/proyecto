@@ -105,7 +105,7 @@ async function me(req, res) {
   res.set('Cache-Control', 'no-store, private, max-age=0');
   res.set('Pragma', 'no-cache');
   const [rows] = await pool.execute(
-    `SELECT u.id, u.nombre, u.email, u.empresa, u.tipo_identificacion, u.numero_identificacion, u.correo_facturacion,
+    `SELECT u.id, u.nombre, u.email, u.empresa, u.tipo_identificacion, u.numero_identificacion, u.correo_facturacion, u.created_at,
             p.nombre_comercial, p.actividad_economica, p.telefono, p.provincia, p.canton, p.distrito, p.otras_senas,
             p.logo, p.logo_blanco, p.logo_posicion
        FROM portal_usuarios u
@@ -126,6 +126,7 @@ async function me(req, res) {
     tipoIdentificacion: u.tipo_identificacion,
     numeroIdentificacion: decrypt(u.numero_identificacion),
     correoFacturacion: u.correo_facturacion,
+    createdAt: u.created_at,
     perfil: {
       nombreComercial: u.nombre_comercial || '',
       actividadEconomica: u.actividad_economica || '',
@@ -146,6 +147,85 @@ async function me(req, res) {
       createInvoicePath: '/api/facturas'
     }
   });
+}
+
+async function changePassword(req, res) {
+  await ensurePortalSchema();
+  const currentPassword = String(req.body.currentPassword || '');
+  const newPassword = String(req.body.newPassword || '');
+
+  if (newPassword.length < 8) {
+    return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 8 caracteres.' });
+  }
+  if (currentPassword === newPassword) {
+    return res.status(400).json({ error: 'La nueva contraseña debe ser diferente de la actual.' });
+  }
+
+  const [rows] = await pool.execute(
+    'SELECT password_hash FROM portal_usuarios WHERE id = ? AND activo = TRUE LIMIT 1',
+    [req.portalUser.usuario_id]
+  );
+  if (!rows.length || !(await verifyPassword(currentPassword, rows[0].password_hash))) {
+    return res.status(401).json({ error: 'La contraseña actual no es correcta.' });
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.execute(
+      'UPDATE portal_usuarios SET password_hash = ? WHERE id = ?',
+      [passwordHash, req.portalUser.usuario_id]
+    );
+    // Cerrar todas las sesiones evita que un dispositivo que quedó abierto
+    // conserve acceso después de un cambio de credenciales.
+    await connection.execute('DELETE FROM portal_sesiones WHERE usuario_id = ?', [req.portalUser.usuario_id]);
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+
+  return res.json({ message: 'Contraseña actualizada. Inicia sesión nuevamente.' });
+}
+
+async function deleteAccount(req, res) {
+  await ensurePortalSchema();
+  const password = String(req.body.password || '');
+  const confirmation = clean(req.body.confirmation, 20).toUpperCase();
+  if (confirmation !== 'ELIMINAR') {
+    return res.status(400).json({ error: 'Escribe ELIMINAR para confirmar.' });
+  }
+
+  const [rows] = await pool.execute(
+    'SELECT password_hash FROM portal_usuarios WHERE id = ? AND activo = TRUE LIMIT 1',
+    [req.portalUser.usuario_id]
+  );
+  if (!rows.length || !(await verifyPassword(password, rows[0].password_hash))) {
+    return res.status(401).json({ error: 'La contraseña no es correcta.' });
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    // Las sesiones y el perfil también tienen borrado en cascada, pero se
+    // eliminan de forma explícita para que la intención del flujo sea clara.
+    await connection.execute('DELETE FROM portal_sesiones WHERE usuario_id = ?', [req.portalUser.usuario_id]);
+    await connection.execute('DELETE FROM portal_perfiles WHERE usuario_id = ?', [req.portalUser.usuario_id]);
+    await connection.execute('DELETE FROM portal_usuarios WHERE id = ?', [req.portalUser.usuario_id]);
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+
+  // Los comprobantes emitidos se conservan como documentos históricos; la
+  // cuenta, sus credenciales, perfil, logos y sesiones sí quedan eliminados.
+  return res.json({ message: 'Cuenta eliminada correctamente.' });
 }
 
 async function saveProfile(req, res) {
@@ -252,6 +332,8 @@ module.exports = {
   login,
   me,
   saveProfile,
+  changePassword,
+  deleteAccount,
   listMyInvoices,
   rotateApiKey,
   config

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { api } from '../api';
+import { confirmAction, showSuccess } from '../utils/alerts.js';
 
 export default function IntegrationPanel({ me, onSaved }) {
   const [copied,setCopied]=useState('');
@@ -17,12 +18,19 @@ export default function IntegrationPanel({ me, onSaved }) {
   }
 
   async function rotate(){
-    if(!window.confirm('¿Generar una nueva clave? La clave anterior dejará de funcionar de inmediato.'))return;
+    const confirmed=await confirmAction({
+      title:'¿Rotar la clave de integración?',
+      text:'La clave anterior dejará de funcionar inmediatamente y deberás actualizarla en los sistemas conectados.',
+      confirmText:'Rotar clave',
+      danger:true
+    });
+    if(!confirmed)return;
     setBusy(true);setError('');
     try{
       await api('/api/portal/integracion/api-key/rotar',{method:'POST'});
       const fresh=await api('/api/portal/me');
       onSaved?.(fresh);
+      await showSuccess('Clave actualizada','La nueva clave ya está disponible. Guárdala en tus sistemas autorizados.');
     }catch(e){setError(e.message)}finally{setBusy(false)}
   }
 

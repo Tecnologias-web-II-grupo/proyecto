@@ -16,6 +16,8 @@ router.post('/auth/register', c.register);
 router.post('/auth/login', c.login);
 router.get('/me', requirePortalAuth, c.me);
 router.put('/perfil', requirePortalAuth, upload, c.saveProfile);
+router.put('/cuenta/contrasena', requirePortalAuth, c.changePassword);
+router.delete('/cuenta', requirePortalAuth, c.deleteAccount);
 router.get('/facturas', requirePortalAuth, c.listMyInvoices);
 router.post('/integracion/api-key/rotar', requirePortalAuth, c.rotateApiKey);
 

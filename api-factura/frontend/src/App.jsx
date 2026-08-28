@@ -5,6 +5,8 @@ import LogoDesigner from './components/LogoDesigner.jsx';
 import SalesHistory from './components/SalesHistory.jsx';
 import IntegrationPanel from './components/IntegrationPanel.jsx';
 import ServiceGuide from './components/ServiceGuide.jsx';
+import AccountProfile from './components/AccountProfile.jsx';
+import { confirmAction } from './utils/alerts.js';
 
 export default function App(){
   const [me,setMe]=useState(null);
@@ -25,6 +27,15 @@ export default function App(){
     }finally{setLoading(false)}
   }
   useEffect(()=>{load()},[]);
+  async function logout(){
+    const confirmed=await confirmAction({
+      title:'¿Cerrar sesión?',
+      text:'Tendrás que ingresar nuevamente para acceder a tus facturas y configuración.',
+      confirmText:'Cerrar sesión'
+    });
+    if(!confirmed)return;
+    setToken('');setMe(null);setGuideOpen(false);setTab('history');
+  }
   if(loading)return <div className="splash">Factura Bonita</div>;
 
   return <div className="app-shell">
@@ -37,7 +48,8 @@ export default function App(){
         <button className={tab==='brand'&&!guideOpen?'active':''} onClick={()=>{setGuideOpen(false);setTab('brand')}}>Mi logo</button>
         <button className={tab==='integration'&&!guideOpen?'active':''} onClick={()=>{setGuideOpen(false);setTab('integration')}}>Integración</button>
         <button className={guideOpen?'active':''} onClick={()=>setGuideOpen(true)}>Ayuda</button>
-        <button className="logout" onClick={()=>{setToken('');setMe(null);setGuideOpen(false)}}>Salir</button>
+        <button className={tab==='profile'&&!guideOpen?'active':''} onClick={()=>{setGuideOpen(false);setTab('profile')}}>Mi perfil</button>
+        <button className="logout" onClick={logout}>Salir</button>
       </nav>}
     </header>
 
@@ -62,6 +74,7 @@ export default function App(){
         {tab==='history'&&<SalesHistory refreshKey={refreshKey}/>}
         {tab==='brand'&&<LogoDesigner me={me} onSaved={setMe}/>}
         {tab==='integration'&&<IntegrationPanel me={me} onSaved={setMe}/>}
+        {tab==='profile'&&<AccountProfile me={me} onSignedOut={()=>{setMe(null);setGuideOpen(false);setTab('history')}}/>}
       </main>
     }
     <footer className="site-footer"><div><strong>Factura Bonita</strong><span>Factura visual PDF de solo lectura.</span></div><div className="footer-meta"><span>API REST</span><span>Logo</span><span>PDF</span></div></footer>

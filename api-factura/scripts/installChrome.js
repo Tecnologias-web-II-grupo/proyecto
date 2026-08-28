@@ -9,10 +9,14 @@ fs.mkdirSync(CACHE_DIR, { recursive: true });
 
 console.log(`[puppeteer] Caché: ${CACHE_DIR}`);
 
-const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+// Ejecutar la CLI con Node evita depender de npx.cmd. En Windows, algunas
+// versiones de Node no pueden iniciar directamente archivos .cmd y responden
+// con spawnSync EINVAL aunque npx esté correctamente instalado.
+const puppeteerEntry = require.resolve('puppeteer');
+const puppeteerCli = path.join(path.dirname(puppeteerEntry), 'node', 'cli.js');
 const result = spawnSync(
-  npx,
-  ['puppeteer', 'browsers', 'install', 'chrome'],
+  process.execPath,
+  [puppeteerCli, 'browsers', 'install', 'chrome'],
   {
     cwd: ROOT_DIR,
     env: { ...process.env, PUPPETEER_CACHE_DIR: CACHE_DIR },
@@ -32,7 +36,10 @@ if ((result.status ?? 1) !== 0) {
 
 try {
   const puppeteer = require('puppeteer');
-  console.log(`[puppeteer] Ejecutable esperado: ${puppeteer.executablePath()}`);
+  // Puppeteer 25 puede resolver esta ruta de forma asíncrona.
+  Promise.resolve(puppeteer.executablePath()).then((executablePath) => {
+    console.log(`[puppeteer] Ejecutable esperado: ${executablePath}`);
+  });
 } catch (error) {
   console.error('[puppeteer] No se pudo resolver el ejecutable después de instalar:', error.message);
   process.exit(1);

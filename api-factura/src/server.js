@@ -17,6 +17,9 @@ const { calentarNavegador, obtenerEstadoBrowser, cerrarBrowser } = require('../d
 const { obtenerEstadoRenderer } = require('../document-renderer/pdfRenderer');
 
 const app = express();
+// Render termina HTTPS en un proxy y envía X-Forwarded-For.
+// Confiar en un salto permite que express-rate-limit identifique correctamente la IP real.
+app.set('trust proxy', 1);
 const API_VERSION = '5.1.0';
 const TEMPLATE_VERSION = 'factura-visual-generica-v1';
 
